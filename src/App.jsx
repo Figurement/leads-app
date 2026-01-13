@@ -7,7 +7,7 @@ import {
 import {
   Settings, Sparkles, X, Loader2, Search, Mail, Calendar,
   Edit3, Save, Plus, Linkedin, Clock, Building2, UserPlus, MessageSquare,
-  Globe, CheckCircle2, AlertCircle, MapPin, Trophy, Ban, Trash2
+  Globe, CheckCircle2, AlertCircle, MapPin, Trophy, Ban, Trash2, Filter
 } from 'lucide-react';
 import { fetchCSV, saveCSV } from './lib/github';
 import { useGemini } from './hooks/useGemini';
@@ -66,6 +66,8 @@ const toBool = (v) => {
   const s = String(v || '').trim().toLowerCase();
   return s === 'true' || s === '1' || s === 'yes' || s === 'y';
 };
+
+// Employees must be an integer; no string conversion here
 
 const isDue = (dateStr) => {
   if (!dateStr) return false;
@@ -462,16 +464,17 @@ const DetailModal = ({ lead, companies, leads, onClose, onSave, onAnalyze, onRes
 
 // --- COMPONENT 3: Board Card ---
 const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, listeners, attributes, isOverlay, duplicatesSet }, ref) => {
-  const isStale = lead['Days since contact'] && parseInt(lead['Days since contact']) > 30;
+  const isDormant = lead['Days since contact'] && parseInt(lead['Days since contact']) > 45;
   const isDueToday = isDue(lead['Next Date']);
   const isDuplicate = duplicatesSet?.has(lead.id);
+  const isEnterprise = (typeof company?.Employees === 'number') && company.Employees >= 500;
 
   return (
     <div
       ref={ref} style={style} {...listeners} {...attributes}
       onClick={() => !isOverlay && onOpen(lead)}
       className={`bg-white p-3 mb-2 rounded-lg shadow-sm border-l-[3px] cursor-grab hover:shadow-md transition-all group relative
-        ${isDueToday ? 'border-red-500 ring-2 ring-red-100' : isStale ? 'border-orange-300' : 'border-blue-500'} 
+        ${isDueToday ? 'border-red-500 ring-2 ring-red-100' : isDormant ? 'border-gray-400' : 'border-blue-500'} 
         ${isOverlay ? 'shadow-2xl scale-105 cursor-grabbing rotate-2 z-50' : ''}
       `}
     >
@@ -485,7 +488,11 @@ const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, listeners, 
       <p className="text-[11px] text-gray-500 truncate mb-2">{lead.Title}</p>
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-1.5 text-[10px]">
-          <span className="font-medium bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 truncate max-w-[100px]">{lead.Company}</span>
+          {/* Company Badge */}
+          <span className={`font-medium px-1.5 py-0.5 rounded truncate max-w-[100px] ${isEnterprise ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' : 'bg-gray-100 text-gray-600'}`}>
+            {isEnterprise && <Building2 size={8} className="inline mr-1" />}
+            {lead.Company}
+          </span>
           {company?.Software && (
             <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded truncate max-w-[60px]">
               {company.Software.split(',')[0]}
@@ -552,6 +559,7 @@ export default function App() {
   const [showDupOnly, setShowDupOnly] = useState(false);
   const [showBetaOnly, setShowBetaOnly] = useState(false);
   const [showTrialOnly, setShowTrialOnly] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState(false);
 
   const { askGemini, researchCompany, researchLead, advice, loading: geminiLoading, setAdvice } = useGemini(keys.gemini);
@@ -566,7 +574,13 @@ export default function App() {
       fetchCSV(keys.github, REPO_OWNER, REPO_NAME, COMPANIES_PATH)
     ]).then(([leadsRes, companiesRes]) => {
       const compMap = {};
-      companiesRes.data.forEach(c => compMap[c.Company] = c);
+      companiesRes.data.forEach(c => {
+        const emp = c.Employees;
+        if (emp !== undefined && emp !== null && emp !== '' && typeof emp !== 'number') {
+          throw new Error(`Invalid Employees value for company "${c.Company}". Expected integer, got ${typeof emp}.`);
+        }
+        compMap[c.Company] = { ...c };
+      });
 
       const validLeads = leadsRes.data
         .filter(l => l.Name && l.Stage)
@@ -605,8 +619,22 @@ export default function App() {
   };
 
   const saveCompaniesToGithub = (newCompaniesObj) => {
+    // Enforce integer-only Employees; do not coerce from strings
+    for (const [name, c] of Object.entries(newCompaniesObj)) {
+      const v = c.Employees;
+      if (v !== undefined && v !== null && v !== '' && typeof v !== 'number') {
+        alert(`Company "${name}": Employees must be an integer. Please enter a number.`);
+        return Promise.reject(new Error('Employees must be an integer'));
+      }
+      if (typeof v === 'number' && !Number.isInteger(v)) {
+        alert(`Company "${name}": Employees must be an integer (no decimals).`);
+        return Promise.reject(new Error('Employees must be an integer'));
+      }
+    }
+
+    // Keep in-memory map as-is
     setCompanies(newCompaniesObj);
-    const compArray = Object.values(newCompaniesObj);
+    const compArray = Object.values(newCompaniesObj).map(c => ({ ...c }));
     return saveCSV(keys.github, REPO_OWNER, REPO_NAME, COMPANIES_PATH, compArray, sha.companies)
       .then(res => setSha(prev => ({ ...prev, companies: res.content.sha })))
       .catch(() => alert("Company save failed"));
@@ -717,6 +745,14 @@ export default function App() {
       if (showDupOnly && !duplicatesSet.has(l.id)) return false;
       if (showBetaOnly && !toBool(l.Beta)) return false;
       if (showTrialOnly && !toBool(l.Trial)) return false;
+      // --- FOCUS MODE LOGIC ---
+      if (focusMode) {
+        const hasTask = !!l['Next Date'];
+        const daysSince = parseInt(l['Days since contact'] ?? 999);
+        const isRecent = daysSince < 30;
+        const isHighValue = l.Stage.includes('Connected') || l.Stage.includes('Qualified');
+        if (!hasTask && !isRecent && !isHighValue) return false;
+      }
       if (!searchQuery) return true;
       const q = searchQuery.toLowerCase();
       return l.Name.toLowerCase().includes(q) || l.Company.toLowerCase().includes(q);
@@ -727,7 +763,7 @@ export default function App() {
       if (dueA !== dueB) return dueB - dueA;
       return (parseInt(b['Days since contact'] || 0) - parseInt(a['Days since contact'] || 0));
     });
-  }, [leads, searchQuery, hideDisqualified, hideWon, showDueOnly, showDupOnly, showBetaOnly, showTrialOnly, duplicatesSet]);
+  }, [leads, searchQuery, hideDisqualified, hideWon, showDueOnly, showDupOnly, showBetaOnly, showTrialOnly, duplicatesSet, focusMode]);
 
   const activeLead = activeId ? leads.find(l => l.id === activeId) : null;
 
@@ -775,6 +811,9 @@ export default function App() {
             </button>
             <button onClick={() => setShowTrialOnly(!showTrialOnly)} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${showTrialOnly ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white text-gray-500 border'}`}>
               <CheckCircle2 size={14} /> {showTrialOnly ? 'Trial Only' : 'Trial'}
+            </button>
+            <button onClick={() => setFocusMode(!focusMode)} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${focusMode ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-white text-gray-500 border'}`}>
+              <Filter size={14} /> {focusMode ? 'Focus Mode' : 'All Leads'}
             </button>
           </div>
         </div>

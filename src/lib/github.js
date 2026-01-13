@@ -44,6 +44,8 @@ export const fetchCSV = async (token, owner, repo, path) => {
       header: true, 
       skipEmptyLines: true,
       delimiter: "",
+      // Only coerce Employees column to numbers; others remain strings
+      dynamicTyping: (field) => field === 'Employees',
       // FIX: Trim whitespace from headers to match your JS property names
       transformHeader: (header) => header.trim() 
     }).data

@@ -9,7 +9,7 @@ import {
   Edit3, Save, Plus, Linkedin, Clock, Building2, UserPlus, MessageSquare,
   Globe, CheckCircle2, AlertCircle, MapPin, Trophy, Ban, Trash2, Filter,
   Eye, EyeOff, ArrowUpDown, Check, ChevronDown, MoreHorizontal, Pencil, Copy,
-  User, Users
+  User, Users, BadgeCheck
 } from 'lucide-react';
 import { fetchCSV, saveCSV } from './lib/github';
 import { useGemini } from './hooks/useGemini';
@@ -101,6 +101,47 @@ const isDue = (dateStr) => {
   const d = parseDateStr(dateStr);
   return d && d <= new Date().setHours(0, 0, 0, 0);
 };
+// Unified status badge component
+const StatusBadge = ({ type, label }) => {
+  const base = "ml-auto flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border";
+  let cls = "";
+  let icon = null;
+  switch (type) {
+    case 'due':
+      cls = "text-rose-600 bg-rose-50 border-rose-100";
+      icon = <Clock size={10} />;
+      break;
+    case 'cold':
+      cls = "text-amber-600 bg-amber-50 border-amber-100";
+      break;
+    case 'stalled':
+      cls = "text-slate-600 bg-slate-100 border-slate-200";
+      break;
+    case 'active':
+      cls = "text-emerald-600 bg-emerald-50 border-emerald-100";
+      break;
+    default:
+      cls = "text-slate-600 bg-slate-100 border-slate-200";
+  }
+  return (
+    <div className={`${base} ${cls}`}>
+      {icon}
+      {label}
+    </div>
+  );
+};
+
+// Updated Enterprise Marker: "Verified" Badge style
+const EnterpriseMark = () => (
+  // Visual adjustment: 'text-indigo-500' is slightly sharper for small icons
+  // size={10} matches the text-[10px] height exactly
+  <BadgeCheck
+    size={10}
+    className=" text-indigo-500 shrink-0"
+    fill="#e0e7ff" // Light indigo fill
+    aria-label="Enterprise Verified"
+  />
+);
 const getDaysSinceInteraction = (historyStr) => {
   if (!historyStr) return null;
   try {
@@ -115,6 +156,7 @@ const getDaysSinceInteraction = (historyStr) => {
 
 // LocalStorage helpers
 const VISIBLE_STAGES_LS_KEY = 'visibleStages';
+const OWNER_FILTER_LS_KEY = 'ownerFilter';
 const defaultVisibleStages = () => Object.fromEntries(ORDERED_STAGES.map(s => [s, true]));
 const loadVisibleStages = () => {
   try {
@@ -572,16 +614,16 @@ const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, listeners, 
   const ownerName = lead.Owner || 'Unassigned';
   const ownerInitial = ownerName === 'Unassigned' ? '?' : ownerName.charAt(0).toUpperCase();
 
-  // --- BADGE LOGIC ---
-  let statusBadge = null;
+  // --- HEADER BADGE LOGIC (top-right) ---
+  let headerBadge = null;
   if (isDueToday) {
-    statusBadge = <div className="flex items-center gap-1 text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100"><Clock size={10} /> Due Today</div>;
+    headerBadge = <StatusBadge type="due" label="Due Today" />;
   } else if (stage === 'New' && daysSince > 3) {
-    statusBadge = <div className="text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">Cold ({daysSince}d)</div>;
+    headerBadge = <StatusBadge type="cold" label={`Cold (${daysSince}d)`} />;
   } else if (stage === 'Connected' && daysSince > 10) {
-    statusBadge = <div className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">Stalled ({daysSince}d)</div>;
+    headerBadge = <StatusBadge type="stalled" label={`Stalled (${daysSince}d)`} />;
   } else if (stage === 'Qualified') {
-    statusBadge = <div className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">Active</div>;
+    headerBadge = <StatusBadge type="active" label="Active" />;
   }
 
   return (
@@ -595,36 +637,32 @@ const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, listeners, 
         ${isDueToday ? 'ring-1 ring-rose-200' : ''}
       `}
     >
-      {/* --- HEADER: COMPANY INFO (Now at the top) --- */}
+      {/* --- HEADER: COMPANY INFO (icon removed, elegant enterprise tag) --- */}
       <div className="flex items-center gap-1.5 mb-2 overflow-hidden">
-        <div className={`p-0.5 rounded ${isEnterprise ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-400'}`}>
-          <Building2 size={10} />
-        </div>
-        <span className={`text-[10px] font-bold uppercase tracking-wider truncate ${isEnterprise ? 'text-indigo-700' : 'text-slate-500'}`}>
+        <span className="text-[10px] font-bold uppercase tracking-wider truncate text-slate-600">
           {lead.Company}
         </span>
+        {isEnterprise && (<EnterpriseMark />)}
         {isDuplicate && <span className="text-[9px] font-bold text-white bg-red-500 px-1 rounded-[3px]">DUP</span>}
+        {headerBadge}
       </div>
 
-      {/* --- BODY: LEAD DETAILS --- */}
-      <h4 className="font-bold text-slate-800 text-sm leading-snug mb-0.5">{lead.Name}</h4>
-      <p className="text-xs text-slate-500 truncate mb-3">{lead.Title || 'No Title'}</p>
-
-      {/* --- FOOTER: BADGES & OWNER --- */}
-      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-50 min-h-[26px]">
-
-        {/* Left Side: Status Badge */}
-        <div>{statusBadge}</div>
-
-        {/* Right Side: Owner Avatar */}
-        {showOwnerAvatar && (
-          <div
-            className={`w-5 h-5 rounded-full border flex items-center justify-center text-[9px] font-bold shadow-sm ${ownerName === 'Unassigned' ? 'bg-slate-50 text-slate-300 border-dashed border-slate-300' : 'bg-indigo-50 text-indigo-600 border-indigo-200'}`}
-            title={`Owner: ${ownerName}`}
-          >
-            {ownerInitial}
-          </div>
-        )}
+      {/* --- BODY: LEAD DETAILS + Owner Avatar (compact) --- */}
+      <div className="space-y-1">
+        <div>
+          <h4 className="font-bold text-slate-800 text-sm leading-snug">{lead.Name}</h4>
+        </div>
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-500 truncate min-w-0">{lead.Title || 'No Title'}</p>
+          {showOwnerAvatar && (
+            <div
+              className={`ml-2 w-5 h-5 rounded-full border flex items-center justify-center text-[9px] font-bold shadow-sm ${ownerName === 'Unassigned' ? 'bg-slate-50 text-slate-300 border-dashed border-slate-300' : 'bg-indigo-50 text-indigo-600 border-indigo-200'}`}
+              title={`Owner: ${ownerName}`}
+            >
+              {ownerInitial}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -746,6 +784,19 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHi
             // Calculate Enterprise status for the group header (matches LeadCardUI logic)
             const compData = companies[group.company];
             const isEnterprise = (typeof compData?.Employees === 'number') && compData.Employees >= 500;
+            const groupDue = group.items.some(i => isDue(i['Next Date']));
+            const groupCold = group.items.some(i => normalizeStage(i.Stage) === 'New' && (i.calculatedDays || 0) > 3);
+            const groupStalled = group.items.some(i => normalizeStage(i.Stage) === 'Connected' && (i.calculatedDays || 0) > 10);
+            const groupActive = group.items.some(i => normalizeStage(i.Stage) === 'Qualified');
+            const groupHeaderBadge = groupDue
+              ? <StatusBadge type="due" label="Due Today" />
+              : groupCold
+                ? <StatusBadge type="cold" label="Cold" />
+                : groupStalled
+                  ? <StatusBadge type="stalled" label="Stalled" />
+                  : groupActive
+                    ? <StatusBadge type="active" label="Active" />
+                    : null;
 
             return (
               <div key={`group-${group.company}`} className="mb-3">
@@ -758,14 +809,13 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHi
                     ${expanded ? 'ring-2 ring-indigo-500/20 border-indigo-300' : ''}
                   `}
                 >
-                  {/* HEADER: Identical to LeadCardUI */}
+                  {/* HEADER: Company name with elegant enterprise tag */}
                   <div className="flex items-center gap-1.5 mb-2 overflow-hidden">
-                    <div className={`p-0.5 rounded ${isEnterprise ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-400'}`}>
-                      <Building2 size={10} />
-                    </div>
-                    <span className={`text-[10px] font-bold uppercase tracking-wider truncate ${isEnterprise ? 'text-indigo-700' : 'text-slate-500'}`}>
+                    <span className="text-[10px] font-bold uppercase tracking-wider truncate text-slate-600">
                       {group.company}
                     </span>
+                    {isEnterprise && (<EnterpriseMark />)}
+                    {groupHeaderBadge}
                   </div>
 
                   {/* BODY: Simulates Name/Title structure */}
@@ -832,7 +882,12 @@ export default function App() {
   const [columnSorts, setColumnSorts] = useState(DEFAULT_SORTS);
   const [columnCollapse, setColumnCollapse] = useState(DEFAULT_COLLAPSE);
   const [filters, setFilters] = useState({ due: false, dup: false, beta: false, trial: false, focus: false });
-  const [ownerFilter, setOwnerFilter] = useState('');
+  const [ownerFilter, setOwnerFilter] = useState(() => {
+    try {
+      const saved = localStorage.getItem(OWNER_FILTER_LS_KEY);
+      return saved ?? '';
+    } catch { return ''; }
+  });
   const [copiedEmail, setCopiedEmail] = useState(false);
 
   const toggleFilter = (k) => setFilters(p => ({ ...p, [k]: !p[k] }));
@@ -871,6 +926,7 @@ export default function App() {
   }, [keys.github]);
 
   useEffect(() => { try { localStorage.setItem(VISIBLE_STAGES_LS_KEY, JSON.stringify(visibleStages)); } catch { } }, [visibleStages]);
+  useEffect(() => { try { localStorage.setItem(OWNER_FILTER_LS_KEY, ownerFilter); } catch { } }, [ownerFilter]);
 
   const saveLeadsToGithub = (newLeads) => {
     setLeads(newLeads);

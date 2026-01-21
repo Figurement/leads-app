@@ -199,15 +199,11 @@ const getDaysSinceInteraction = (historyStr) => {
 };
 
 // LocalStorage helpers
-const VISIBLE_STAGES_LS_KEY = 'visibleStages';
+// Removed VISIBLE_STAGES_LS_KEY (no longer needed)
 const OWNER_FILTER_LS_KEY = 'ownerFilter';
-const defaultVisibleStages = () => Object.fromEntries(ORDERED_STAGES.map(s => [s, true]));
-const loadVisibleStages = () => {
-  try {
-    const raw = localStorage.getItem(VISIBLE_STAGES_LS_KEY);
-    return raw ? JSON.parse(raw) : defaultVisibleStages();
-  } catch { return defaultVisibleStages(); }
-};
+const MINIMIZED_STAGES_LS_KEY = 'minimizedStages';
+
+// Removed defaultVisibleStages and loadVisibleStages (no longer needed)
 
 // --- CUSTOM DATE PICKER ---
 const CustomDatePicker = ({ selected, onChange, showTimeSelect, placeholderText }) => (
@@ -238,7 +234,7 @@ const ModalWrapper = ({ title, children, onClose }) => (
 // --- COMPONENT: Add Modal ---
 const AddModal = ({ companies, leads, owners, onClose, onSave, onResearchLead, onResearchCompany }) => {
   const [type, setType] = useState('lead');
-  const [formData, setFormData] = useState({ Name: '', Title: '', Company: '', Email: '', LinkedIn: '', Category: '', Employees: '', City: '', Country: '', Url: '', Software: '', Notes: '', Owner: '' });
+  const [formData, setFormData] = useState({ Name: '', Title: '', Company: '', Email: '', Phone: '', LinkedIn: '', Category: '', Employees: '', City: '', Country: '', Url: '', Software: '', Notes: '', Owner: '' });
   const [loading, setLoading] = useState(false);
 
   const existingCompanyLeads = useMemo(() => {
@@ -300,6 +296,7 @@ const AddModal = ({ companies, leads, owners, onClose, onSave, onResearchLead, o
               </div>
             </div>
             <input placeholder="Email" className="input-clean" value={formData.Email} onChange={e => setFormData({ ...formData, Email: e.target.value })} />
+            <input placeholder="Phone" className="input-clean" value={formData.Phone} onChange={e => setFormData({ ...formData, Phone: e.target.value })} />
             <input placeholder="LinkedIn URL" className="input-clean" value={formData.LinkedIn} onChange={e => setFormData({ ...formData, LinkedIn: e.target.value })} />
             <div className="flex gap-2">
               <input placeholder="City" className="flex-1 input-clean" value={formData.City} onChange={e => setFormData({ ...formData, City: e.target.value })} />
@@ -455,10 +452,8 @@ const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyz
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-md flex items-center justify-center z-[80]" onClick={onClose}>
       <div className="bg-white w-[1152px] h-[85vh] rounded-2xl shadow-2xl flex overflow-hidden ring-1 ring-slate-900/5" onClick={e => e.stopPropagation()}>
-
         {/* COL 1: Details */}
         <div className="w-80 bg-slate-50 border-r border-slate-200 flex flex-col overflow-y-auto">
-
           {isEditing ? (
             <div className="p-4 m-3 bg-white border border-indigo-100 shadow-sm rounded-xl space-y-3 animate-in fade-in zoom-in-95 duration-200">
               <div className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-2">Edit Basic Info</div>
@@ -475,6 +470,10 @@ const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyz
                 <input className="input-clean py-1 text-sm" value={details.Email} onChange={e => setDetails({ ...details, Email: e.target.value })} />
               </div>
               <div>
+                <label className="text-[10px] text-slate-400 font-bold">Phone</label>
+                <input className="input-clean py-1 text-sm" value={details.Phone || ''} onChange={e => setDetails({ ...details, Phone: e.target.value })} />
+              </div>
+              <div>
                 <label className="text-[10px] text-slate-400 font-bold">LinkedIn URL</label>
                 <input className="input-clean py-1 text-sm" value={details.LinkedIn} onChange={e => setDetails({ ...details, LinkedIn: e.target.value })} />
               </div>
@@ -482,23 +481,37 @@ const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyz
             </div>
           ) : (
             <div className="p-6 text-center">
-              <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl font-bold text-indigo-600 shadow-inner">
-                {lead.Name.charAt(0)}
-              </div>
               <h2 className="font-bold text-xl text-slate-800 mb-1 leading-tight">{details.Name}</h2>
               <p className="text-sm text-slate-500">{details.Title || 'No Title'}</p>
-              {details.Email && (
-                <div className="mt-2 mb-4 flex items-center justify-center gap-2">
-                  <span className="text-xs text-slate-600">{details.Email}</span>
-                  <button onClick={() => { if (details.Email) { navigator.clipboard.writeText(details.Email); setCopiedEmail(true); setTimeout(() => setCopiedEmail(false), 1200); } }} className={`p-1.5 rounded-full transition-colors hover:bg-slate-100 ${copiedEmail ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`} title="Copy email">
-                    {copiedEmail ? <CheckCircle2 size={14} /> : <Copy size={14} />}
-                  </button>
+              {(details.Email || details.Phone) && (
+                <div className="mt-2 mb-4 flex flex-col items-center gap-1">
+                  {details.Email && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-600">{details.Email}</span>
+                      <button onClick={() => { if (details.Email) { navigator.clipboard.writeText(details.Email); setCopiedEmail(true); setTimeout(() => setCopiedEmail(false), 1200); } }} className={`p-1.5 rounded-full transition-colors hover:bg-slate-100 ${copiedEmail ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`} title="Copy email">
+                        {copiedEmail ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                      </button>
+                    </div>
+                  )}
+                  {details.Phone && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-600">{details.Phone}</span>
+                      <button onClick={() => { navigator.clipboard.writeText(details.Phone); setCopiedEmail(true); setTimeout(() => setCopiedEmail(false), 1200); }} className={`p-1.5 rounded-full transition-colors hover:bg-slate-100 ${copiedEmail ? 'text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`} title="Copy phone">
+                        {copiedEmail ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="flex gap-2 justify-center">
                 {details.LinkedIn && (
                   <a href={details.LinkedIn} target="_blank" rel="noreferrer" className="p-2 bg-white border border-slate-200 rounded-full text-slate-400 hover:text-blue-600 hover:border-blue-300 transition-colors" title="Open LinkedIn">
                     <Linkedin size={14} />
+                  </a>
+                )}
+                {details.Website && (
+                  <a href={details.Website} target="_blank" rel="noreferrer" className="p-2 bg-white border border-slate-200 rounded-full text-slate-400 hover:text-green-600 hover:border-green-300 transition-colors" title="Open Personal Website">
+                    <Globe size={14} />
                   </a>
                 )}
                 <button onClick={() => setIsEditing(true)} className="p-2 bg-white border border-slate-200 rounded-full text-slate-400 hover:text-indigo-600 hover:border-indigo-300 transition-colors" title="Edit Basic Info">
@@ -694,6 +707,8 @@ const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, listeners, 
   const stage = normalizeStage(lead.Stage);
   const daysSince = lead.calculatedDays || 0;
   const isDueToday = isDue(lead['Next Date']);
+  const isStalled = (stage === 'Connected' && daysSince > 10);
+  const isActive = (stage === 'Qualified');
   const isDuplicate = duplicatesSet?.has(lead.id);
   const isEnterprise = (typeof company?.Employees === 'number') && company.Employees >= 500;
 
@@ -707,14 +722,15 @@ const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, listeners, 
   const ownerInitial = ownerName === 'Unassigned' ? '?' : ownerName.charAt(0).toUpperCase();
 
   // --- HEADER BADGE LOGIC (top-right) ---
-  let headerBadge = null;
-  if (isDueToday) {
-    headerBadge = <StatusBadge type="due" label="Due Today" />;
-  } else if (stage === 'Connected' && daysSince > 10) {
-    headerBadge = <StatusBadge type="stalled" label={`Stalled (${daysSince}d)`} />;
-  } else if (stage === 'Qualified') {
-    headerBadge = <StatusBadge type="active" label="Active" />;
-  }
+  const headerBadge = (stage === 'Disqualified') ? null : (
+    isDueToday
+      ? <StatusBadge type="due" label="Due Today" />
+      : isStalled
+        ? <StatusBadge type="stalled" label="Stalled" />
+        : isActive
+          ? <StatusBadge type="active" label="Active" />
+          : null
+  );
 
   return (
     <div
@@ -773,8 +789,8 @@ const DraggableLeadCard = (props) => {
 
 // --- COMPONENT: Column ---
 // --- COMPONENT: Column (Updated: Popover Flips Down) ---
-const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHide, onFocusToggle, isFocused, currentSort, onChangeSort, showOwnerAvatar, collapseMulti, onToggleCollapse, scrollPos, onScrollPosChange }) => {
-  const { setNodeRef } = useDroppable({ id });
+const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusToggle, isFocused, currentSort, onChangeSort, showOwnerAvatar, collapseMulti, onToggleCollapse, scrollPos, onScrollPosChange, isMinimized, onToggleMinimize }) => {
+  const { setNodeRef, isOver } = useDroppable({ id });
   const [menuOpen, setMenuOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const menuRef = useRef(null);
@@ -793,7 +809,7 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHi
     if (stage === 'Connected' && isStrictlyPast) {
       return { type: 'promote', label: 'Meeting Done? Qualify?', icon: <ArrowRight size={10} /> };
     }
-    if (stage === 'New' && lead.History && lead.History.length > 20) {
+    if (stage === 'New' && lead.History && lead.History.length > 100) {
       return { type: 'promote', label: 'Started?', icon: <ArrowRight size={10} /> };
     }
     return null;
@@ -851,10 +867,42 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHi
     });
   };
 
+
+  if (isMinimized) {
+    return (
+      <div
+        ref={setNodeRef}
+        onClick={onToggleMinimize}
+        className={`
+          w-10 h-full flex flex-col items-center py-4 gap-4 border-r border-slate-200 
+          transition-all duration-200 cursor-pointer flex-shrink-0 relative
+          ${isOver ? 'bg-indigo-100 ring-inset ring-2 ring-indigo-500' : 'bg-slate-50 hover:bg-slate-100'}
+        `}
+      >
+        {/* Count Badge */}
+        <div className="bg-slate-200 text-slate-600 text-[10px] font-bold h-6 min-w-[24px] px-1 rounded-full flex items-center justify-center z-10">
+          {leads.length}
+        </div>
+
+        {/* Rotated Label (Vertical Text) */}
+        <div className="flex-1 flex items-center justify-center">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap [writing-mode:vertical-rl] rotate-180 select-none">
+            {title}
+          </span>
+        </div>
+
+        {/* Stage Icon at bottom */}
+        <div className="text-slate-300">
+          {STAGE_DEFINITIONS[title]?.icon}
+        </div>
+      </div>
+    );
+  }
   const stageInfo = STAGE_DEFINITIONS[title] || { icon: <HelpCircle size={14} />, desc: '', exit: '' };
 
+
   return (
-    <div ref={setNodeRef} className="flex-shrink-0 w-80 h-full flex flex-col mr-4">
+    <div ref={setNodeRef} className="flex-shrink-0 w-64 h-full flex flex-col mr-4">
       {/* --- COLUMN HEADER --- */}
       <div className={`group flex justify-between items-center mb-3 px-3 py-2 rounded-lg transition-colors relative ${isFocused ? 'bg-indigo-50 border border-indigo-100' : 'hover:bg-gray-200/50'}`}>
 
@@ -902,10 +950,9 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHi
           </span>
         </div>
 
-        {/* Right Side: SORT BADGE + MENU */}
+        {/* Right Side: SORT BADGE + CHEVRON */}
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" ref={menuRef}>
-
-          {/* VISIBLE SORT INDICATOR */}
+          {/* Sort menu trigger (keeps menu) */}
           <div
             className="flex items-center gap-1.5 px-2 py-1 rounded bg-white border border-slate-200 shadow-sm cursor-pointer hover:border-indigo-300"
             onClick={() => setMenuOpen(!menuOpen)}
@@ -914,30 +961,39 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHi
             <span className="text-xs">{activeSortData.icon}</span>
             <span className="text-[9px] font-bold uppercase tracking-wide text-slate-500">{activeSortData.label}</span>
           </div>
-
-          <div className="relative">
-            <button onClick={() => setMenuOpen(!menuOpen)} className={`p-1.5 rounded-md hover:bg-white hover:shadow-sm transition-all text-slate-400 hover:text-indigo-600 ${menuOpen ? 'bg-white text-indigo-600 shadow-sm' : ''}`}><MoreHorizontal size={14} /></button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100 origin-top-right">
-                <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-50">Sort By</div>
-                <div className="p-1">
-                  {Object.entries(SORT_STRATEGIES).map(([key, meta]) => (
-                    <button key={key} onClick={() => { onChangeSort(id, key); setMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors ${currentSort === key ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}>
-                      <span className="text-base">{meta.icon}</span>
-                      <div className="flex-1 text-left"><div className="font-medium">{meta.label}</div><div className="text-[10px] opacity-70">{meta.desc}</div></div>
-                      {currentSort === key && <Check size={14} />}
-                    </button>
-                  ))}
-                </div>
-                <div className="border-t border-slate-100 p-1">
-                  <button onClick={() => { onToggleCollapse(id); setMenuOpen(false); }} className={`w-full flex items-center gap-2 px-3 py-2 text-xs rounded-lg transition-colors ${collapseMulti ? 'text-indigo-700 bg-indigo-50' : 'text-slate-600 hover:bg-slate-50'}`}>
-                    <Building2 size={14} /> {collapseMulti ? 'Collapse by Company: On' : 'Collapse by Company: Off'}
+          {/* Chevron for minimize */}
+          <button
+            onClick={onToggleMinimize}
+            className="p-1.5 rounded-md hover:bg-white hover:shadow-sm transition-all text-slate-400 hover:text-indigo-600"
+            title="Minimize Column"
+          >
+            <ChevronDown size={16} className={isMinimized ? 'rotate-180 transition-transform' : 'transition-transform'} />
+          </button>
+          {/* The menu is only shown when clicking the sort badge above */}
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+              <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-50">Sort By</div>
+              <div className="p-1">
+                {Object.entries(SORT_STRATEGIES).map(([key, meta]) => (
+                  <button key={key} onClick={() => { onChangeSort(id, key); setMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors ${currentSort === key ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}>
+                    <span className="text-base">{meta.icon}</span>
+                    <div className="flex-1 text-left"><div className="font-medium">{meta.label}</div><div className="text-[10px] opacity-70">{meta.desc}</div></div>
+                    {currentSort === key && <Check size={14} />}
                   </button>
-                </div>
-                <div className="border-t border-slate-100 p-1"><button onClick={() => onToggleHide(id)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"><EyeOff size={14} /> Hide Column</button></div>
+                ))}
               </div>
-            )}
-          </div>
+              <div className="border-t border-slate-100 p-1">
+                <button onClick={() => { onToggleCollapse(id); setMenuOpen(false); }} className={`w-full flex items-center gap-2 px-3 py-2 text-xs rounded-lg transition-colors ${collapseMulti ? 'text-indigo-700 bg-indigo-50' : 'text-slate-600 hover:bg-slate-50'}`}>
+                  <Building2 size={14} /> {collapseMulti ? 'Collapse by Company: On' : 'Collapse by Company: Off'}
+                </button>
+              </div>
+              <div className="border-t border-slate-100 p-1">
+                <button onClick={() => { onToggleMinimize(); setMenuOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">
+                  <ArrowRight size={14} className="rotate-180" /> Minimize Column
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -993,13 +1049,15 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHi
             const groupDue = group.items.some(i => isDue(i['Next Date']));
             const groupStalled = group.items.some(i => normalizeStage(i.Stage) === 'Connected' && (i.calculatedDays || 0) > 10);
             const groupActive = group.items.some(i => normalizeStage(i.Stage) === 'Qualified');
-            const groupHeaderBadge = groupDue
-              ? <StatusBadge type="due" label="Due Today" />
-              : groupStalled
-                ? <StatusBadge type="stalled" label="Stalled" />
-                : groupActive
-                  ? <StatusBadge type="active" label="Active" />
-                  : null;
+            const groupHeaderBadge = (title === 'Disqualified') ? null : (
+              groupDue
+                ? <StatusBadge type="due" label="Due Today" />
+                : groupStalled
+                  ? <StatusBadge type="stalled" label="Stalled" />
+                  : groupActive
+                    ? <StatusBadge type="active" label="Active" />
+                    : null
+            );
 
             return (
               <div key={`group-${group.company}`} className="mb-3">
@@ -1029,7 +1087,7 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHi
           })
         )}
 
-        {sortedLeads.length === 0 && (<div className="h-32 flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-xl m-2"><span className="text-xs">Empty</span></div>)}
+        {sortedLeads.length === 0 && (<div className="h-24 flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-xl m-2"><span className="text-xs">Empty</span></div>)}
       </div>
     </div>
   );
@@ -1042,6 +1100,12 @@ export default function App() {
   const [keys, setKeys] = useState({ github: localStorage.getItem('gh_token') || '', gemini: localStorage.getItem('gemini_key') || '' });
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
+  const [minimizedStages, setMinimizedStages] = useState(() => {
+    try {
+      const saved = localStorage.getItem(MINIMIZED_STAGES_LS_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
   const toastTimerRef = useRef(null);
 
   const notifyToast = (type, text) => {
@@ -1057,20 +1121,23 @@ export default function App() {
   const [activeId, setActiveId] = useState(null);
   const [detailLead, setDetailLead] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showSettings, setShowSettings] = useState(!keys.github);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [visibleStages, setVisibleStages] = useState(() => loadVisibleStages());
-  const [focusedStage, setFocusedStage] = useState(null);
-  const [columnSorts, setColumnSorts] = useState(DEFAULT_SORTS);
-  const [columnCollapse, setColumnCollapse] = useState(DEFAULT_COLLAPSE);
-  const [columnScroll, setColumnScroll] = useState({});
-  const [filters, setFilters] = useState({ due: false, dup: false, beta: false, trial: false, focus: false });
   const [ownerFilter, setOwnerFilter] = useState(() => {
     try {
       const saved = localStorage.getItem(OWNER_FILTER_LS_KEY);
       return saved ?? '';
     } catch { return ''; }
   });
+  // Show settings if no github or gemini key or owner is set
+  const [showSettings, setShowSettings] = useState(!keys.github || !keys.gemini || ownerFilter === undefined);
+  // Track if user has confirmed owner (can be blank)
+  const [ownerConfirmed, setOwnerConfirmed] = useState(!!ownerFilter);
+  const [searchQuery, setSearchQuery] = useState("");
+  // Removed visibleStages state
+  const [focusedStage, setFocusedStage] = useState(null);
+  const [columnSorts, setColumnSorts] = useState(DEFAULT_SORTS);
+  const [columnCollapse, setColumnCollapse] = useState(DEFAULT_COLLAPSE);
+  const [columnScroll, setColumnScroll] = useState({});
+  const [filters, setFilters] = useState({ due: false, dup: false, beta: false, trial: false, focus: false });
   const [copiedEmail, setCopiedEmail] = useState(false);
 
   const toggleFilter = (k) => setFilters(p => ({ ...p, [k]: !p[k] }));
@@ -1108,8 +1175,9 @@ export default function App() {
       }).catch(e => { console.error(e); alert("Error loading data"); }).finally(() => setLoading(false));
   }, [keys.github]);
 
-  useEffect(() => { try { localStorage.setItem(VISIBLE_STAGES_LS_KEY, JSON.stringify(visibleStages)); } catch { } }, [visibleStages]);
+  // Removed visibleStages effect
   useEffect(() => { try { localStorage.setItem(OWNER_FILTER_LS_KEY, ownerFilter); } catch { } }, [ownerFilter]);
+  useEffect(() => { try { localStorage.setItem(MINIMIZED_STAGES_LS_KEY, JSON.stringify(minimizedStages)); } catch { } }, [minimizedStages]);
 
   const saveLeadsToGithub = (newLeads) => {
     setLeads(newLeads);
@@ -1170,6 +1238,12 @@ export default function App() {
   }, [leads]);
 
   const processedLeads = useMemo(() => {
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return leads.filter(l =>
+        l.Name.toLowerCase().includes(q) || l.Company.toLowerCase().includes(q)
+      );
+    }
     return leads.filter(l => {
       if (ownerFilter && (l.Owner || 'Unassigned') !== ownerFilter) return false; // OWNER FILTER
       if (filters.due && !isDue(l['Next Date'])) return false;
@@ -1179,8 +1253,7 @@ export default function App() {
       if (filters.focus) {
         if (!isDue(l['Next Date']) && (l.calculatedDays || 0) >= 30 && !['Connected', 'Qualified', 'Offer'].includes(l.Stage)) return false;
       }
-      if (!searchQuery) return true;
-      return l.Name.toLowerCase().includes(searchQuery.toLowerCase()) || l.Company.toLowerCase().includes(searchQuery.toLowerCase());
+      return true;
     });
   }, [leads, searchQuery, filters, duplicatesSet, ownerFilter]);
 
@@ -1223,7 +1296,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => setShowAddModal(true)} className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg text-sm shadow-md shadow-indigo-200"><Plus size={16} /> <span className="hidden sm:inline">Add Lead</span></button>
-            {(focusedStage || Object.values(visibleStages).some(v => !v)) && <button onClick={() => { setVisibleStages(defaultVisibleStages()); setFocusedStage(null) }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors" title="Show All"><Eye size={20} /></button>}
+            {/* Show All button removed */}
             <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"><Settings size={20} /></button>
           </div>
         </header>
@@ -1234,12 +1307,12 @@ export default function App() {
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd} onDragStart={e => setActiveId(e.active.id)}>
               <div className="flex h-full w-max">
-                {(focusedStage ? [focusedStage] : ORDERED_STAGES.filter(s => visibleStages[s])).map(stage => (
+                {(focusedStage ? [focusedStage] : ORDERED_STAGES).map(stage => (
                   <Column
                     key={stage} id={stage} title={stage}
                     leads={processedLeads.filter(l => l.Stage === stage)}
                     companies={companies} onOpen={setDetailLead}
-                    duplicatesSet={duplicatesSet} onToggleHide={() => { setVisibleStages(p => ({ ...p, [stage]: false })); if (focusedStage === stage) setFocusedStage(null); }}
+                    duplicatesSet={duplicatesSet}
                     onFocusToggle={s => setFocusedStage(prev => prev === s ? null : s)}
                     isFocused={focusedStage === stage} currentSort={columnSorts[stage]}
                     onChangeSort={(s, k) => setColumnSorts(p => ({ ...p, [s]: k }))}
@@ -1248,6 +1321,8 @@ export default function App() {
                     onToggleCollapse={(s) => setColumnCollapse(p => ({ ...p, [s]: !p[s] }))}
                     scrollPos={columnScroll[stage]}
                     onScrollPosChange={(s, pos) => setColumnScroll(p => ({ ...p, [s]: pos }))}
+                    isMinimized={!!minimizedStages[stage]}
+                    onToggleMinimize={() => setMinimizedStages(prev => ({ ...prev, [stage]: !prev[stage] }))}
                   />
                 ))}
               </div>
@@ -1275,11 +1350,25 @@ export default function App() {
         )}
 
         {showSettings && (
-          <ModalWrapper title="Settings" onClose={() => setShowSettings(false)}>
+          <ModalWrapper title="Login / Settings" onClose={() => {
+            if (keys.github && keys.gemini && ownerConfirmed) setShowSettings(false);
+          }}>
             <div className="space-y-4">
               <div><label className="text-xs font-bold text-slate-400 uppercase">GitHub Token</label><input type="password" value={keys.github} onChange={e => setKeys({ ...keys, github: e.target.value })} className="input-clean mt-1" /></div>
               <div><label className="text-xs font-bold text-slate-400 uppercase">Gemini Key</label><input type="password" value={keys.gemini} onChange={e => setKeys({ ...keys, gemini: e.target.value })} className="input-clean mt-1" /></div>
-              <button onClick={() => { localStorage.setItem('gh_token', keys.github); localStorage.setItem('gemini_key', keys.gemini); window.location.reload(); }} className="w-full btn-primary py-2.5">Save & Reload</button>
+              <div><label className="text-xs font-bold text-slate-400 uppercase">Your Owner Name (optional)</label><input type="text" value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)} className="input-clean mt-1" placeholder="(Optional)" /></div>
+              <button
+                onClick={() => {
+                  localStorage.setItem('gh_token', keys.github);
+                  localStorage.setItem('gemini_key', keys.gemini);
+                  localStorage.setItem('ownerFilter', ownerFilter ?? '');
+                  setOwnerConfirmed(true);
+                  if (keys.github && keys.gemini) window.location.reload();
+                }}
+                className="w-full btn-primary py-2.5"
+                disabled={!keys.github || !keys.gemini}
+              >Save & Reload</button>
+              <div className="text-xs text-slate-400">Enter your GitHub and Gemini keys to continue. Owner name is optional.</div>
             </div>
           </ModalWrapper>
         )}

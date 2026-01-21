@@ -196,14 +196,20 @@ export const useGemini = (apiKey) => {
     try {
       const ai = new GoogleGenAI({ apiKey });
 
+      // UPDATED PROMPT: Explicitly requests JSON to prevent search text override
       const prompt = `
         Research the company "${companyName}" ${city ? `in ${city}` : ""}.
-        Tasks:
-        1. Industry: Be specific.
-        2. Software: Search for job posts/case studies (KeyShot, Rhino, etc).
-        3. Employees: Find an EXACT number if possible (avoid LinkedIn ranges if you can).
-        4. Website: Official URL.
-        5. Location: City and Country of HQ.
+        
+        Return a strict JSON object with these specific keys:
+        - Category: Specific industry.
+        - Software: Tech stack/Software used (e.g. KeyShot, Rhino).
+        - Employees: Specific number as a string (e.g. "14000").
+        - Url: Official website URL.
+        - City: HQ City.
+        - Country: HQ Country.
+        - Reasoning: Brief summary of sources.
+
+        Output ONLY JSON. No introductory text.
       `;
 
       const response = await ai.models.generateContent({
@@ -239,7 +245,7 @@ export const useGemini = (apiKey) => {
     }
   };
 
-  // 3. Lead Researcher (NEW)
+  // 3. Lead Researcher
   const researchLead = async (name, company) => {
     if (!apiKey) return alert("Please set your Gemini API Key.");
     setLoading(true);
@@ -247,12 +253,17 @@ export const useGemini = (apiKey) => {
     try {
       const ai = new GoogleGenAI({ apiKey });
 
+      // UPDATED PROMPT: Explicitly requests JSON
       const prompt = `
         Find public professional info for "${name}" who works at "${company}".
-        Tasks:
-        1. Job Title: Current role.
-        2. LinkedIn: Public profile URL (if found).
-        3. Location: City/Country they are based in.
+        
+        Return a strict JSON object with these keys:
+        - Title: Current Job Title.
+        - LinkedIn: Public profile URL.
+        - City: Current City.
+        - Country: Current Country.
+
+        Output ONLY JSON. No introductory text.
       `;
 
       const response = await ai.models.generateContent({

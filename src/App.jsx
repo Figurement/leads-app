@@ -1,5 +1,5 @@
 /* src/App.jsx */
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import {
   DndContext, useDraggable, useDroppable, DragOverlay, closestCorners,
   useSensor, useSensors, MouseSensor, TouchSensor
@@ -9,7 +9,10 @@ import {
   Edit3, Save, Plus, Linkedin, Clock, Building2, UserPlus, MessageSquare,
   Globe, CheckCircle2, AlertCircle, MapPin, Trophy, Ban, Trash2, Filter,
   Eye, EyeOff, ArrowUpDown, Check, ChevronDown, MoreHorizontal, Pencil, Copy,
-  User, Users, BadgeCheck
+  User, Users, BadgeCheck, Info,
+  HelpCircle,
+  ArrowRight,
+  FileText
 } from 'lucide-react';
 import { fetchCSV, saveCSV } from './lib/github';
 import { useGemini } from './hooks/useGemini';
@@ -59,10 +62,10 @@ const ORDERED_STAGES = [
 ];
 
 const SORT_STRATEGIES = {
-  momentum: { label: 'Momentum', icon: '🔥', desc: 'Newest interactions' },
-  revival: { label: 'Revival', icon: '⛏️', desc: 'Oldest interactions' },
-  size: { label: 'Size', icon: '💎', desc: 'Highest employee count' },
-  alpha: { label: 'Alpha', icon: 'Aa', desc: 'Alphabetical' }
+  momentum: { label: 'Newest', icon: '🔥', desc: 'Most recent activity first' },
+  revival: { label: 'Oldest', icon: '💤', desc: 'Longest time since contact' },
+  size: { label: 'Largest', icon: '💎', desc: 'Most employees first' },
+  alpha: { label: 'A-Z', icon: 'Aa', desc: 'Name alphabetical' }
 };
 
 const DEFAULT_SORTS = {
@@ -76,6 +79,50 @@ const DEFAULT_COLLAPSE = {
   'New': false, 'Attempting': false, 'Connected': false,
   'Nurture': true, 'Qualified': false, 'Offer': false,
   'Disqualified': false, 'Won': false
+};
+
+// --- STAGE GUIDELINES ---
+const STAGE_DEFINITIONS = {
+  'New': {
+    icon: <Search size={14} />,
+    desc: 'Uncontacted. Research valid.',
+    exit: 'First message sent'
+  },
+  'Attempting': {
+    icon: <Mail size={14} />,
+    desc: 'Outreach active. No reply yet.',
+    exit: 'Response received'
+  },
+  'Connected': {
+    icon: <MessageSquare size={14} />,
+    desc: 'Two-way dialogue. Discovery.',
+    exit: 'Pain verified + Meeting set'
+  },
+  'Nurture': {
+    icon: <Clock size={14} />,
+    desc: 'Not ready now. Timing mismatch.',
+    exit: 'Re-engagement date arrived'
+  },
+  'Qualified': {
+    icon: <Trophy size={14} />,
+    desc: 'Pain verified. Deal in progress.',
+    exit: 'Proposal/Pricing sent'
+  },
+  'Offer': {
+    icon: <FileText size={14} />, // You might need to import FileText
+    desc: 'Pricing/Terms delivered.',
+    exit: 'Contract signed'
+  },
+  'Won': {
+    icon: <Sparkles size={14} />,
+    desc: 'Contract signed. Onboarding.',
+    exit: 'N/A'
+  },
+  'Disqualified': {
+    icon: <Ban size={14} />,
+    desc: 'Bad fit or hard "No".',
+    exit: 'N/A'
+  }
 };
 
 // --- HELPERS ---
@@ -103,16 +150,13 @@ const isDue = (dateStr) => {
 };
 // Unified status badge component
 const StatusBadge = ({ type, label }) => {
-  const base = "ml-auto flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border";
+  const base = "ml-auto flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0";
   let cls = "";
   let icon = null;
   switch (type) {
     case 'due':
       cls = "text-rose-600 bg-rose-50 border-rose-100";
       icon = <Clock size={10} />;
-      break;
-    case 'cold':
-      cls = "text-amber-600 bg-amber-50 border-amber-100";
       break;
     case 'stalled':
       cls = "text-slate-600 bg-slate-100 border-slate-200";
@@ -228,8 +272,8 @@ const AddModal = ({ companies, leads, owners, onClose, onSave, onResearchLead, o
           <>
             {existingCompanyLeads.length > 0 && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm">
-                <div className="flex items-center gap-2 text-amber-700 font-bold mb-1"><AlertCircle size={16} /> Lead Conflict</div>
-                <p className="text-amber-600 text-xs mb-2">We already have leads at {formData.Company}:</p>
+                <div className="flex items-center gap-2 text-amber-700 font-bold mb-1"><AlertCircle size={16} />Lead Info</div>
+                <p className="text-amber-600 text-xs mb-2">We have other leads at {formData.Company}:</p>
                 <ul className="space-y-1">
                   {existingCompanyLeads.map(l => (
                     <li key={l.id} className="text-xs flex justify-between bg-white/50 p-1.5 rounded">
@@ -283,11 +327,17 @@ const AddModal = ({ companies, leads, owners, onClose, onSave, onResearchLead, o
 };
 
 // --- COMPONENT: Detail Modal (Expanded) ---
-const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyze, onResearch, onDelete, onOpenLead }) => {
+const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyze, onResearch, onDelete, onOpenLead, onToast }) => {
   const [companyData, setCompanyData] = useState(companies[lead.Company] || { Company: lead.Company });
   const otherLeads = leads.filter(l => l.Company === lead.Company && l.id !== lead.id);
 
   const [isEditing, setIsEditing] = useState(false);
+  const [empFocused, setEmpFocused] = useState(false);
+  const formatEmployees = (v) => {
+    const d = String(v ?? '').replace(/[^0-9]/g, '');
+    if (!d) return '';
+    return new Intl.NumberFormat('da-DK').format(Number(d));
+  };
 
   const [history, setHistory] = useState(() => {
     let initialHistory = [];
@@ -366,8 +416,26 @@ const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyz
   };
 
   const handleResearch = async () => {
-    const result = await onResearch(companyData.Company, details.City || "");
-    if (result) setCompanyData(prev => ({ ...prev, ...result }));
+    try {
+      const result = await onResearch(companyData.Company, details.City || "");
+      if (!result) {
+        onToast && onToast('error', 'Auto-Fill failed or returned no data');
+        return;
+      }
+      setCompanyData(prev => {
+        const updates = Object.keys(result || {}).reduce((acc, k) => {
+          const nv = result[k];
+          const ov = prev[k];
+          if (nv !== undefined && nv !== null && String(nv).trim() !== '' && nv !== ov) acc++;
+          return acc;
+        }, 0);
+        if (updates > 0) onToast && onToast('success', `Auto-Fill updated ${updates} field${updates > 1 ? 's' : ''}`);
+        else onToast && onToast('info', 'Auto-Fill found no new data');
+        return { ...prev, ...result };
+      });
+    } catch (e) {
+      onToast && onToast('error', 'Auto-Fill error during analysis');
+    }
   };
 
   const startEdit = (idx) => {
@@ -551,7 +619,7 @@ const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyz
               {['user', 'lead', 'note'].map(t => (
                 <button key={t} onClick={() => setMessageType(t)} className={`px-3 py-1 text-xs font-medium rounded-full border transition-all ${messageType === t ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>
               ))}
-              <div className="ml-auto w-32"><CustomDatePicker selected={logDate} onChange={setLogDate} showTimeSelect placeholderText="Time" /></div>
+              <div className="ml-auto w-40"><CustomDatePicker selected={logDate} onChange={setLogDate} showTimeSelect placeholderText="Time" /></div>
             </div>
             <div className="relative">
               <textarea className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 pr-12 text-sm outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all resize-none" rows={3} placeholder="Type a note or log an email..." value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} />
@@ -571,8 +639,26 @@ const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyz
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
               <div><label className="text-[10px] font-bold text-slate-400 uppercase">Name</label><input className="w-full text-sm font-semibold border-b border-transparent focus:border-indigo-500 outline-none" value={companyData.Company || ''} onChange={e => setCompanyData({ ...companyData, Company: e.target.value })} /></div>
               <div><label className="text-[10px] font-bold text-slate-400 uppercase">Website</label><input className="w-full text-xs text-blue-600 border-b border-transparent focus:border-indigo-500 outline-none" value={companyData.Url || ''} onChange={e => setCompanyData({ ...companyData, Url: e.target.value })} /></div>
-              <div><label className="text-[10px] font-bold text-slate-400 uppercase">Employees</label><input className="w-full text-xs border-b border-transparent focus:border-indigo-500 outline-none" value={companyData.Employees || ''} onChange={e => setCompanyData({ ...companyData, Employees: e.target.value })} /></div>
-              {companyData.Reasoning && <div className="bg-slate-50 p-3 rounded-lg text-[10px] text-slate-600 leading-relaxed border border-slate-100">{companyData.Reasoning}</div>}
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-[10px] font-bold text-slate-400 uppercase">City</label><input className="w-full text-xs border-b border-transparent focus:border-indigo-500 outline-none" value={companyData.City || ''} onChange={e => setCompanyData({ ...companyData, City: e.target.value })} placeholder="HQ City" /></div>
+                <div><label className="text-[10px] font-bold text-slate-400 uppercase">Country</label><input className="w-full text-xs border-b border-transparent focus:border-indigo-500 outline-none" value={companyData.Country || ''} onChange={e => setCompanyData({ ...companyData, Country: e.target.value })} placeholder="HQ Country" /></div>
+              </div>
+              <div><label className="text-[10px] font-bold text-slate-400 uppercase">Industry</label><input className="w-full text-xs border-b border-transparent focus:border-indigo-500 outline-none" value={companyData.Category || ''} onChange={e => setCompanyData({ ...companyData, Category: e.target.value })} placeholder="Specific industry" /></div>
+              <div><label className="text-[10px] font-bold text-slate-400 uppercase">Software</label><input className="w-full text-xs border-b border-transparent focus:border-indigo-500 outline-none" value={companyData.Software || ''} onChange={e => setCompanyData({ ...companyData, Software: e.target.value })} placeholder="Tech stack (e.g., KeyShot, Rhino)" /></div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Employees</label>
+                <input
+                  className="w-full text-xs border-b border-transparent focus:border-indigo-500 outline-none"
+                  value={empFocused ? String(companyData.Employees || '') : formatEmployees(companyData.Employees)}
+                  onFocus={() => setEmpFocused(true)}
+                  onBlur={() => setEmpFocused(false)}
+                  onChange={e => {
+                    const digits = e.target.value.replace(/[^0-9]/g, '');
+                    setCompanyData({ ...companyData, Employees: digits });
+                  }}
+                  placeholder="e.g. 14.000"
+                />
+              </div>
             </div>
 
             {otherLeads.length > 0 && (
@@ -611,6 +697,12 @@ const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, listeners, 
   const isDuplicate = duplicatesSet?.has(lead.id);
   const isEnterprise = (typeof company?.Employees === 'number') && company.Employees >= 500;
 
+  let historyLen = 0;
+  try {
+    const h = JSON.parse(lead.History || '[]');
+    if (Array.isArray(h)) historyLen = h.length;
+  } catch { }
+
   const ownerName = lead.Owner || 'Unassigned';
   const ownerInitial = ownerName === 'Unassigned' ? '?' : ownerName.charAt(0).toUpperCase();
 
@@ -618,8 +710,6 @@ const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, listeners, 
   let headerBadge = null;
   if (isDueToday) {
     headerBadge = <StatusBadge type="due" label="Due Today" />;
-  } else if (stage === 'New' && daysSince > 3) {
-    headerBadge = <StatusBadge type="cold" label={`Cold (${daysSince}d)`} />;
   } else if (stage === 'Connected' && daysSince > 10) {
     headerBadge = <StatusBadge type="stalled" label={`Stalled (${daysSince}d)`} />;
   } else if (stage === 'Qualified') {
@@ -634,7 +724,6 @@ const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, listeners, 
         bg-white p-4 mb-3 rounded-xl shadow-sm border border-slate-200 
         cursor-grab hover:shadow-md hover:border-indigo-300 transition-all duration-200 group relative
         ${isOverlay ? 'shadow-2xl scale-105 rotate-1 z-50 ring-2 ring-indigo-500' : ''}
-        ${isDueToday ? 'ring-1 ring-rose-200' : ''}
       `}
     >
       {/* --- HEADER: COMPANY INFO (icon removed, elegant enterprise tag) --- */}
@@ -644,7 +733,13 @@ const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, listeners, 
         </span>
         {isEnterprise && (<EnterpriseMark />)}
         {isDuplicate && <span className="text-[9px] font-bold text-white bg-red-500 px-1 rounded-[3px]">DUP</span>}
-        {headerBadge}
+        {headerBadge || (
+          historyLen > 0 && daysSince < 900 && (
+            <span className="ml-auto text-[10px] font-semibold text-slate-400 whitespace-nowrap">
+              {daysSince}d
+            </span>
+          )
+        )}
       </div>
 
       {/* --- BODY: LEAD DETAILS + Owner Avatar (compact) --- */}
@@ -677,17 +772,46 @@ const DraggableLeadCard = (props) => {
 };
 
 // --- COMPONENT: Column ---
-const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHide, onFocusToggle, isFocused, currentSort, onChangeSort, showOwnerAvatar, collapseMulti, onToggleCollapse }) => {
+// --- COMPONENT: Column (Updated: Popover Flips Down) ---
+const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHide, onFocusToggle, isFocused, currentSort, onChangeSort, showOwnerAvatar, collapseMulti, onToggleCollapse, scrollPos, onScrollPosChange }) => {
   const { setNodeRef } = useDroppable({ id });
   const [menuOpen, setMenuOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const menuRef = useRef(null);
   const [expandedCompanies, setExpandedCompanies] = useState(() => new Set());
+  const scrollRef = useRef(null);
+  const prevScrollTopRef = useRef(0);
+
+  // Retrieve the actual object for the current sort (Label + Icon)
+  const activeSortData = SORT_STRATEGIES[currentSort] || SORT_STRATEGIES.momentum;
+
+  const getSuggestion = (lead) => {
+    const stage = normalizeStage(lead.Stage);
+    const dateStr = lead['Next Date'];
+    const isStrictlyPast = dateStr && parseDateStr(dateStr) < new Date().setHours(0, 0, 0, 0);
+
+    if (stage === 'Connected' && isStrictlyPast) {
+      return { type: 'promote', label: 'Meeting Done? Qualify?', icon: <ArrowRight size={10} /> };
+    }
+    if (stage === 'New' && lead.History && lead.History.length > 20) {
+      return { type: 'promote', label: 'Started?', icon: <ArrowRight size={10} /> };
+    }
+    return null;
+  };
 
   useEffect(() => {
-    const handleClick = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
+    const handleClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
+
+  useLayoutEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = prevScrollTopRef.current;
+    }
+  }, [leads]);
 
   const sortedLeads = useMemo(() => {
     return [...leads].sort((a, b) => {
@@ -711,10 +835,12 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHi
     const map = new Map();
     const order = [];
     sortedLeads.forEach(l => {
-      if (!map.has(l.Company)) { map.set(l.Company, []); order.push(l.Company); }
-      map.get(l.Company).push(l);
+      const compName = (l.Company || '').trim();
+      const key = compName ? compName : `__single__${l.id}`;
+      if (!map.has(key)) { map.set(key, { company: compName, items: [] }); order.push(key); }
+      map.get(key).items.push(l);
     });
-    return order.map(c => ({ company: c, items: map.get(c) }));
+    return order.map(k => map.get(k));
   }, [sortedLeads]);
 
   const toggleCompanyExpand = (company) => {
@@ -725,15 +851,70 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHi
     });
   };
 
+  const stageInfo = STAGE_DEFINITIONS[title] || { icon: <HelpCircle size={14} />, desc: '', exit: '' };
+
   return (
     <div ref={setNodeRef} className="flex-shrink-0 w-80 h-full flex flex-col mr-4">
       {/* --- COLUMN HEADER --- */}
-      <div className={`group flex justify-between items-center mb-3 px-3 py-2 rounded-lg transition-colors ${isFocused ? 'bg-indigo-50 border border-indigo-100' : 'hover:bg-gray-200/50'}`}>
-        <div className="flex items-center gap-2 overflow-hidden cursor-pointer" onClick={() => onFocusToggle(id)}>
-          <span className={`text-xs font-bold uppercase tracking-wider ${isFocused ? 'text-indigo-700' : 'text-slate-500'}`}>{title}</span>
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isFocused ? 'bg-white text-indigo-600 shadow-sm' : 'bg-slate-200 text-slate-600'}`}>{leads.length}</span>
+      <div className={`group flex justify-between items-center mb-3 px-3 py-2 rounded-lg transition-colors relative ${isFocused ? 'bg-indigo-50 border border-indigo-100' : 'hover:bg-gray-200/50'}`}>
+
+        {/* GUIDELINE POPOVER (Positioned BELOW the header to avoid clipping) */}
+        {guideOpen && (
+          <div className="absolute top-full left-0 mt-2 w-64 z-[100] animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="bg-slate-800 p-4 rounded-xl shadow-2xl border border-slate-700 relative">
+              {/* Arrow pointing UP */}
+              <div className="absolute -top-1.5 left-6 w-3 h-3 bg-slate-800 border-t border-l border-slate-700 rotate-45 transform"></div>
+
+              {/* Content (Clean, No Icon) */}
+              <p className="text-xs text-slate-300 font-medium leading-relaxed mb-3">
+                {stageInfo.desc}
+              </p>
+              <div>
+                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Exit Criteria
+                </div>
+                <div className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                  <CheckCircle2 size={12} /> {stageInfo.exit}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Left Side: Title & Info Trigger */}
+        <div
+          className="flex items-center gap-2 cursor-pointer relative z-10"
+          onClick={() => onFocusToggle(id)}
+          onMouseEnter={() => setGuideOpen(true)}
+          onMouseLeave={() => setGuideOpen(false)}
+        >
+          {/* Stage Icon */}
+          <span className={`inline-flex items-center justify-center ${isFocused ? 'text-indigo-600' : 'text-slate-400'}`}>
+            {stageInfo.icon}
+          </span>
+          {/* Title */}
+          <span className={`text-xs font-bold uppercase tracking-wider ${isFocused ? 'text-indigo-700' : 'text-slate-500'}`}>
+            {title}
+          </span>
+          {/* Count Pill */}
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isFocused ? 'bg-white text-indigo-600 shadow-sm' : 'bg-slate-200 text-slate-600'}`}>
+            {leads.length}
+          </span>
         </div>
-        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity" ref={menuRef}>
+
+        {/* Right Side: SORT BADGE + MENU */}
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" ref={menuRef}>
+
+          {/* VISIBLE SORT INDICATOR */}
+          <div
+            className="flex items-center gap-1.5 px-2 py-1 rounded bg-white border border-slate-200 shadow-sm cursor-pointer hover:border-indigo-300"
+            onClick={() => setMenuOpen(!menuOpen)}
+            title={`Sorted by ${activeSortData.label}: ${activeSortData.desc}`}
+          >
+            <span className="text-xs">{activeSortData.icon}</span>
+            <span className="text-[9px] font-bold uppercase tracking-wide text-slate-500">{activeSortData.label}</span>
+          </div>
+
           <div className="relative">
             <button onClick={() => setMenuOpen(!menuOpen)} className={`p-1.5 rounded-md hover:bg-white hover:shadow-sm transition-all text-slate-400 hover:text-indigo-600 ${menuOpen ? 'bg-white text-indigo-600 shadow-sm' : ''}`}><MoreHorizontal size={14} /></button>
             {menuOpen && (
@@ -761,96 +942,85 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHi
       </div>
 
       {/* --- COLUMN BODY --- */}
-      <div className={`flex-1 overflow-y-auto px-1 pb-4 custom-scrollbar rounded-xl transition-colors ${isFocused ? 'bg-indigo-50/30' : 'bg-slate-100/50'}`}>
+      <div
+        ref={scrollRef}
+        onScroll={(e) => {
+          prevScrollTopRef.current = e.currentTarget.scrollTop;
+          onScrollPosChange && onScrollPosChange(id, e.currentTarget.scrollTop);
+        }}
+        className={`flex-1 overflow-y-auto overflow-x-hidden px-1 pb-4 custom-scrollbar rounded-xl transition-colors ${isFocused ? 'bg-indigo-50/30' : 'bg-slate-100/50'}`}
+      >
         <div className="h-2" />
 
         {/* NON-COLLAPSED MODE */}
         {!collapseMulti && (
-          sortedLeads.map(lead => (
-            <DraggableLeadCard key={lead.id} lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} />
-          ))
+          sortedLeads.map(lead => {
+            const nudge = getSuggestion(lead);
+            return (
+              <div key={lead.id} className="relative group/card">
+                {/* PROMOTION NUDGE OVERLAY */}
+                {nudge && (
+                  <div className="absolute -top-2 right-2 z-10 bg-indigo-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 animate-pulse cursor-help" title="Data suggests moving to next stage">
+                    {nudge.label} {nudge.icon}
+                  </div>
+                )}
+                <DraggableLeadCard lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} />
+              </div>
+            );
+          })
         )}
 
         {/* COLLAPSED MODE */}
         {collapseMulti && (
           groupedByCompany.map(group => {
-            // Case 1: Single Item (Render exactly like a normal card)
             if (group.items.length <= 1) {
               const lead = group.items[0];
-              return <DraggableLeadCard key={lead.id} lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} />;
+              const nudge = getSuggestion(lead);
+              return (
+                <div key={lead.id} className="relative group/card">
+                  {nudge && (
+                    <div className="absolute -top-2 right-2 z-10 bg-indigo-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 animate-pulse">
+                      {nudge.label} {nudge.icon}
+                    </div>
+                  )}
+                  <DraggableLeadCard lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} />
+                </div>
+              );
             }
-
             const expanded = expandedCompanies.has(group.company);
-            // Calculate Enterprise status for the group header (matches LeadCardUI logic)
             const compData = companies[group.company];
             const isEnterprise = (typeof compData?.Employees === 'number') && compData.Employees >= 500;
             const groupDue = group.items.some(i => isDue(i['Next Date']));
-            const groupCold = group.items.some(i => normalizeStage(i.Stage) === 'New' && (i.calculatedDays || 0) > 3);
             const groupStalled = group.items.some(i => normalizeStage(i.Stage) === 'Connected' && (i.calculatedDays || 0) > 10);
             const groupActive = group.items.some(i => normalizeStage(i.Stage) === 'Qualified');
             const groupHeaderBadge = groupDue
               ? <StatusBadge type="due" label="Due Today" />
-              : groupCold
-                ? <StatusBadge type="cold" label="Cold" />
-                : groupStalled
-                  ? <StatusBadge type="stalled" label="Stalled" />
-                  : groupActive
-                    ? <StatusBadge type="active" label="Active" />
-                    : null;
+              : groupStalled
+                ? <StatusBadge type="stalled" label="Stalled" />
+                : groupActive
+                  ? <StatusBadge type="active" label="Active" />
+                  : null;
 
             return (
               <div key={`group-${group.company}`} className="mb-3">
-                <button
-                  onClick={() => toggleCompanyExpand(group.company)}
-                  className={`
-                    w-full text-left relative
-                    bg-white p-4 rounded-xl shadow-sm border border-slate-200 
-                    hover:shadow-md hover:border-indigo-300 transition-all duration-200
-                    ${expanded ? 'ring-2 ring-indigo-500/20 border-indigo-300' : ''}
-                  `}
-                >
-                  {/* HEADER: Company name with elegant enterprise tag */}
+                <button onClick={() => toggleCompanyExpand(group.company)} className={`w-full text-left relative bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:shadow-md hover:border-indigo-300 transition-all duration-200 ${expanded ? 'ring-2 ring-indigo-500/20 border-indigo-300' : ''}`}>
                   <div className="flex items-center gap-1.5 mb-2 overflow-hidden">
-                    <span className="text-[10px] font-bold uppercase tracking-wider truncate text-slate-600">
-                      {group.company}
-                    </span>
-                    {isEnterprise && (<EnterpriseMark />)}
+                    <span className="text-[10px] font-bold uppercase tracking-wider truncate text-slate-600">{group.company}</span>
+                    {isEnterprise && <EnterpriseMark />}
                     {groupHeaderBadge}
                   </div>
-
-                  {/* BODY: Simulates Name/Title structure */}
                   <div className="flex justify-between items-start">
                     <div className="flex-1 min-w-0 pr-2">
-                      {/* "Name" slot -> Shows Count */}
-                      <h4 className="font-bold text-slate-800 text-sm leading-snug mb-0.5">
-                        {group.items.length} Contacts
-                      </h4>
-                      {/* "Title" slot -> Shows Names */}
-                      <p className="text-xs text-slate-500 truncate">
-                        {group.items.map(i => i.Name).join(', ')}
-                      </p>
+                      <h4 className="font-bold text-slate-800 text-sm leading-snug mb-0.5">{group.items.length} Contacts</h4>
+                      <p className="text-xs text-slate-500 truncate">{group.items.map(i => i.Name).join(', ')}</p>
                     </div>
-
-                    {/* FOOTER: Chevron in the action slot */}
-                    <div className={`text-slate-400 transition-transform mt-1 ${expanded ? 'rotate-180' : ''}`}>
-                      <ChevronDown size={16} />
-                    </div>
+                    <div className={`text-slate-400 transition-transform mt-1 ${expanded ? 'rotate-180' : ''}`}><ChevronDown size={16} /></div>
                   </div>
                 </button>
-
-                {/* EXPANDED ITEMS */}
                 {expanded && (
                   <div className="mt-2 ml-4 pl-3 border-l-2 border-indigo-100 animate-in fade-in slide-in-from-top-1 duration-200">
                     {group.items.map(lead => (
-                      <DraggableLeadCard
-                        key={lead.id}
-                        lead={lead}
-                        company={companies[lead.Company]}
-                        onOpen={onOpen}
-                        duplicatesSet={duplicatesSet}
-                        showOwnerAvatar={showOwnerAvatar}
-                      // Optional: hideHeader={true} if you updated LeadCardUI to support it
-                      />
+                      <DraggableLeadCard key={lead.id} lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} />
                     ))}
                   </div>
                 )}
@@ -858,6 +1028,7 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onToggleHi
             );
           })
         )}
+
         {sortedLeads.length === 0 && (<div className="h-32 flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-xl m-2"><span className="text-xs">Empty</span></div>)}
       </div>
     </div>
@@ -870,6 +1041,17 @@ export default function App() {
   const [sha, setSha] = useState({ leads: null, companies: null });
   const [keys, setKeys] = useState({ github: localStorage.getItem('gh_token') || '', gemini: localStorage.getItem('gemini_key') || '' });
   const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
+
+  const notifyToast = (type, text) => {
+    setToast({ type, text });
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
+  };
 
   // UI State
   const [activeId, setActiveId] = useState(null);
@@ -881,6 +1063,7 @@ export default function App() {
   const [focusedStage, setFocusedStage] = useState(null);
   const [columnSorts, setColumnSorts] = useState(DEFAULT_SORTS);
   const [columnCollapse, setColumnCollapse] = useState(DEFAULT_COLLAPSE);
+  const [columnScroll, setColumnScroll] = useState({});
   const [filters, setFilters] = useState({ due: false, dup: false, beta: false, trial: false, focus: false });
   const [ownerFilter, setOwnerFilter] = useState(() => {
     try {
@@ -1028,7 +1211,12 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2 border-l border-slate-200 pl-6">
-              {[{ k: 'due', l: 'Tasks', i: <Clock size={14} />, c: 'text-rose-600 bg-rose-50 border-rose-200' }, { k: 'focus', l: 'Focus', i: <Filter size={14} />, c: 'text-indigo-600 bg-indigo-50 border-indigo-200' }, { k: 'beta', l: 'Beta', i: <Sparkles size={14} />, c: 'text-purple-600 bg-purple-50 border-purple-200' }].map(f => (
+              {[
+                { k: 'due', l: 'Due Today', i: <Clock size={14} />, c: 'text-rose-600 bg-rose-50 border-rose-200' },
+                { k: 'focus', l: 'Focus', i: <Filter size={14} />, c: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
+                { k: 'beta', l: 'Beta', i: <Sparkles size={14} />, c: 'text-purple-600 bg-purple-50 border-purple-200' },
+                { k: 'trial', l: 'Trial', i: <Trophy size={14} />, c: 'text-amber-600 bg-amber-50 border-amber-200' }
+              ].map(f => (
                 <button key={f.k} onClick={() => toggleFilter(f.k)} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all border ${filters[f.k] ? f.c : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>{f.i} {f.l}</button>
               ))}
             </div>
@@ -1058,6 +1246,8 @@ export default function App() {
                     showOwnerAvatar={ownerFilter === ''}
                     collapseMulti={!!columnCollapse[stage]}
                     onToggleCollapse={(s) => setColumnCollapse(p => ({ ...p, [s]: !p[s] }))}
+                    scrollPos={columnScroll[stage]}
+                    onScrollPosChange={(s, pos) => setColumnScroll(p => ({ ...p, [s]: pos }))}
                   />
                 ))}
               </div>
@@ -1079,6 +1269,7 @@ export default function App() {
             onSave={handleUpdateLead}
             onAnalyze={askGemini}
             onResearch={researchCompany}
+            onToast={notifyToast}
             onDelete={id => saveLeadsToGithub(leads.filter(l => l.id !== id)).then(() => setDetailLead(null))}
           />
         )}
@@ -1102,7 +1293,22 @@ export default function App() {
             </div>
           </div>
         )}
-        {geminiLoading && <div className="fixed bottom-8 right-8 bg-slate-900 text-white px-6 py-3 rounded-full flex items-center gap-3 shadow-2xl z-[100] animate-bounce"><Loader2 className="animate-spin" size={20} /> Analyzing...</div>}
+        {geminiLoading && (
+          <div className="fixed bottom-8 right-8 bg-slate-900 text-white px-6 py-3 rounded-full flex items-center gap-3 shadow-2xl z-[100] animate-bounce">
+            <Loader2 className="animate-spin" size={20} /> Analyzing...
+          </div>
+        )}
+        {toast && !geminiLoading && (
+          <div
+            className={`fixed bottom-8 right-8 text-white px-6 py-3 rounded-full flex items-center gap-3 shadow-2xl z-[100] ${toast.type === 'success' ? 'bg-emerald-600' : toast.type === 'error' ? 'bg-rose-600' : 'bg-slate-800'
+              }`}
+          >
+            {toast.type === 'success' && <CheckCircle2 size={20} className="text-white" />}
+            {toast.type === 'error' && <AlertCircle size={20} className="text-white" />}
+            {toast.type === 'info' && <Sparkles size={20} className="text-white" />}
+            <span className="text-sm font-medium">{toast.text}</span>
+          </div>
+        )}
       </div>
     </>
   );

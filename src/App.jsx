@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { fetchCSV, saveCSV } from './lib/github';
 import { useGemini } from './hooks/useGemini';
+import { DailySummaryModal } from './components/DailySummaryModal';
 
 // --- DATE PICKER IMPORTS ---
 import DatePicker, { registerLocale } from "react-datepicker";
@@ -1100,6 +1101,7 @@ export default function App() {
   const [keys, setKeys] = useState({ github: localStorage.getItem('gh_token') || '', gemini: localStorage.getItem('gemini_key') || '' });
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
+  const [showSummary, setShowSummary] = useState(false);
   const [minimizedStages, setMinimizedStages] = useState(() => {
     try {
       const saved = localStorage.getItem(MINIMIZED_STAGES_LS_KEY);
@@ -1295,8 +1297,14 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowSummary(true)}
+              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+              title="Daily Summary"
+            >
+              <Calendar size={20} />
+            </button>
             <button onClick={() => setShowAddModal(true)} className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg text-sm shadow-md shadow-indigo-200"><Plus size={16} /> <span className="hidden sm:inline">Add Lead</span></button>
-            {/* Show All button removed */}
             <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"><Settings size={20} /></button>
           </div>
         </header>
@@ -1346,6 +1354,12 @@ export default function App() {
             onResearch={researchCompany}
             onToast={notifyToast}
             onDelete={id => saveLeadsToGithub(leads.filter(l => l.id !== id)).then(() => setDetailLead(null))}
+          />
+        )}
+        {showSummary && (
+          <DailySummaryModal
+            leads={leads}
+            onClose={() => setShowSummary(false)}
           />
         )}
 

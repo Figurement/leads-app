@@ -151,7 +151,7 @@ const isDue = (dateStr) => {
 };
 // Unified status badge component
 const StatusBadge = ({ type, label }) => {
-  const base = "ml-auto flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0";
+  const base = "leading-none ml-auto flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0";
   let cls = "";
   let icon = null;
   switch (type) {
@@ -585,17 +585,18 @@ const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyz
               <Sparkles size={12} /> Analyze with AI
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/30">
+          <div className="flex-1 overflow-y-auto p-6 bg-slate-50/30 flex flex-col-reverse gap-6">
             {history.map((entry, idx) => {
               const isMine = entry.type === 'user' || entry.type === 'note';
               const isEditing = editingIndex === idx;
+
               return (
-                <div key={idx} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
-                  <div className="flex items-center gap-2 mb-1 px-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{entry.type === 'user' ? 'Me' : entry.type === 'note' ? 'Note' : 'Lead'}</span>
-                    <span className="text-[10px] text-slate-300">•</span>
-                    <span className="text-[10px] text-slate-400">{entry.isLegacy ? <span className="italic">Legacy Import</span> : new Date(entry.date).toLocaleString('da-DK')}</span>
-                  </div>
+                <div
+                  key={idx}
+                  className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} group/msg`}
+                >
+
+                  {/* 1. MESSAGE BUBBLE (First) */}
                   {isEditing ? (
                     <div className={`max-w-[85%] w-full p-3.5 rounded-2xl border bg-white shadow-sm ${isMine ? 'rounded-tr-sm' : 'rounded-tl-sm'}`}>
                       <div className="flex gap-2 mb-2">
@@ -615,15 +616,37 @@ const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyz
                       {entry.content}
                     </div>
                   )}
-                  <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-400">
-                    {!isEditing && (
-                      <>
-                        <button onClick={() => startEdit(idx)} className="hover:text-indigo-600 transition-colors">Edit</button>
-                        <span>•</span>
-                        <button onClick={() => { const h = history.filter((_, i) => i !== idx); setHistory(h); }} className="hover:text-red-500 transition-colors flex items-center gap-1"><Trash2 size={10} /> Delete</button>
-                      </>
-                    )}
-                  </div>
+
+                  {/* 2. METADATA & ACTIONS (Below - Always Visible) */}
+                  {!isEditing && (
+                    <div className="mt-1.5 flex items-center gap-2 px-1 text-[10px] text-slate-400">
+                      <span className="font-bold uppercase tracking-wider">
+                        {entry.type === 'user' ? 'Me' : entry.type === 'note' ? 'Note' : 'Lead'}
+                      </span>
+                      <span>•</span>
+                      <span>
+                        {entry.isLegacy ? <span className="italic">Legacy</span> : new Date(entry.date).toLocaleString('da-DK', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                      </span>
+
+                      {/* ACTION BUTTONS: Removed 'opacity-0' and hover classes */}
+                      <div className="flex items-center gap-1 ml-2">
+                        <button
+                          onClick={() => startEdit(idx)}
+                          className="p-1 rounded text-slate-400 hover:bg-slate-200 hover:text-indigo-600 transition-colors"
+                          title="Edit message"
+                        >
+                          <Pencil size={10} />
+                        </button>
+                        <button
+                          onClick={() => { const h = history.filter((_, i) => i !== idx); setHistory(h); }}
+                          className="p-1 rounded text-slate-400 hover:bg-slate-200 hover:text-rose-600 transition-colors"
+                          title="Delete message"
+                        >
+                          <Trash2 size={10} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -744,7 +767,7 @@ const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, listeners, 
       `}
     >
       {/* --- HEADER: COMPANY INFO (icon removed, elegant enterprise tag) --- */}
-      <div className="flex items-center gap-1.5 mb-2 overflow-hidden">
+      <div className="flex items-center h-6 gap-1.5 mb-2 overflow-hidden ">
         <span className="text-[10px] font-bold uppercase tracking-wider truncate text-slate-600">
           {lead.Company}
         </span>

@@ -12,7 +12,8 @@ import {
   User, Users, BadgeCheck, Info,
   HelpCircle,
   ArrowRight,
-  FileText
+  FileText,
+  ChevronLeft
 } from 'lucide-react';
 import { fetchCSV, saveCSV } from './lib/github';
 import { useGemini } from './hooks/useGemini';
@@ -884,8 +885,7 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
         ref={setNodeRef}
         onClick={onToggleMinimize}
         className={`
-          w-10 h-full flex flex-col items-center py-4 gap-4 border-r border-slate-200 
-          transition-all duration-200 cursor-pointer flex-shrink-0 relative
+          w-10 h-full flex flex-col items-center py-4 gap-4 transition-all duration-200 cursor-pointer flex-shrink-0 relative
           ${isOver ? 'bg-indigo-100 ring-inset ring-2 ring-indigo-500' : 'bg-slate-50 hover:bg-slate-100'}
         `}
       >
@@ -894,16 +894,15 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
           {leads.length}
         </div>
 
-        {/* Rotated Label (Vertical Text) */}
-        <div className="flex-1 flex items-center justify-center">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap [writing-mode:vertical-rl] rotate-180 select-none">
+        {/* Rotated Label (Vertical Text) with icon below */}
+        <div className="flex-1 flex flex-col items-center justify-start">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap [writing-mode:vertical-rl] rotate-180 select-none mt-0">
             {title}
           </span>
-        </div>
 
-        {/* Stage Icon at bottom */}
-        <div className="text-slate-300">
-          {STAGE_DEFINITIONS[title]?.icon}
+          <div className="text-slate-400 mt-2">
+            {STAGE_DEFINITIONS[title]?.icon}
+          </div>
         </div>
       </div>
     );
@@ -977,7 +976,7 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
             className="p-1.5 rounded-md hover:bg-white hover:shadow-sm transition-all text-slate-400 hover:text-indigo-600"
             title="Minimize Column"
           >
-            <ChevronDown size={16} className={isMinimized ? 'rotate-180 transition-transform' : 'transition-transform'} />
+            <ChevronLeft size={16} className={isMinimized ? 'rotate-180 transition-transform' : 'transition-transform'} />
           </button>
           {/* The menu is only shown when clicking the sort badge above */}
           {menuOpen && (

@@ -825,20 +825,6 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
   // Retrieve the actual object for the current sort (Label + Icon)
   const activeSortData = SORT_STRATEGIES[currentSort] || SORT_STRATEGIES.momentum;
 
-  const getSuggestion = (lead) => {
-    const stage = normalizeStage(lead.Stage);
-    const dateStr = lead['Next Date'];
-    const isStrictlyPast = dateStr && parseDateStr(dateStr) < new Date().setHours(0, 0, 0, 0);
-
-    if (stage === 'Connected' && isStrictlyPast) {
-      return { type: 'promote', label: 'Meeting Done? Qualify?', icon: <ArrowRight size={10} /> };
-    }
-    if (stage === 'New' && lead.History && lead.History.length > 100) {
-      return { type: 'promote', label: 'Started?', icon: <ArrowRight size={10} /> };
-    }
-    return null;
-  };
-
   useEffect(() => {
     const handleClick = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
@@ -1035,15 +1021,9 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
         {/* NON-COLLAPSED MODE */}
         {!collapseMulti && (
           sortedLeads.map(lead => {
-            const nudge = getSuggestion(lead);
             return (
               <div key={lead.id} className="relative group/card">
-                {/* PROMOTION NUDGE OVERLAY */}
-                {nudge && (
-                  <div className="absolute -top-2 right-2 z-10 bg-indigo-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 animate-pulse cursor-help" title="Data suggests moving to next stage">
-                    {nudge.label} {nudge.icon}
-                  </div>
-                )}
+
                 <DraggableLeadCard lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} />
               </div>
             );
@@ -1055,14 +1035,9 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
           groupedByCompany.map(group => {
             if (group.items.length <= 1) {
               const lead = group.items[0];
-              const nudge = getSuggestion(lead);
               return (
                 <div key={lead.id} className="relative group/card">
-                  {nudge && (
-                    <div className="absolute -top-2 right-2 z-10 bg-indigo-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 animate-pulse">
-                      {nudge.label} {nudge.icon}
-                    </div>
-                  )}
+
                   <DraggableLeadCard lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} />
                 </div>
               );
@@ -1086,13 +1061,14 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
             return (
               <div key={`group-${group.company}`} className="mb-3">
                 <button onClick={() => toggleCompanyExpand(group.company)} className={`w-full text-left relative bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:shadow-md hover:border-indigo-300 transition-all duration-200 ${expanded ? 'ring-2 ring-indigo-500/20 border-indigo-300' : ''}`}>
-                  <div className="flex items-center gap-1.5 mb-2 overflow-hidden">
+                  <div className="flex items-center h-6 gap-1.5 mb-2 overflow-hidden">
                     <span className="text-[10px] font-bold uppercase tracking-wider truncate text-slate-600">{group.company}</span>
                     {isEnterprise && <EnterpriseMark />}
                     {groupHeaderBadge}
                   </div>
                   <div className="flex justify-between items-start">
                     <div className="flex-1 min-w-0 pr-2">
+                      {/* Aligned text size/leading to match LeadCardUI body more closely */}
                       <h4 className="font-bold text-slate-800 text-sm leading-snug mb-0.5">{group.items.length} Contacts</h4>
                       <p className="text-xs text-slate-500 truncate">{group.items.map(i => i.Name).join(', ')}</p>
                     </div>

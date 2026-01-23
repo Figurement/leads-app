@@ -18,6 +18,7 @@ import {
 import { fetchCSV, saveCSV } from './lib/github';
 import { useGemini } from './hooks/useGemini';
 import { DailySummaryModal } from './components/DailySummaryModal';
+import { CompanyManager } from './components/CompanyManager';
 
 // --- DATE PICKER IMPORTS ---
 import DatePicker, { registerLocale } from "react-datepicker";
@@ -336,6 +337,64 @@ const AddModal = ({ companies, leads, owners, onClose, onSave, onResearchLead, o
   );
 };
 
+// --- COMPONENT: Smart Dead End Alert ---
+const CompanyStatusAlert = ({ companyName, newLeadsCount, onClose, onScout, onGiveUp, onGoToNew }) => {
+  const hasPotentials = newLeadsCount > 0;
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-100 p-6">
+        <div className="flex flex-col items-center text-center mb-6">
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 ${hasPotentials ? 'bg-indigo-100 text-indigo-600' : 'bg-orange-100 text-orange-600'}`}>
+            {hasPotentials ? <Users size={24} /> : <AlertCircle size={24} />}
+          </div>
+
+          <h3 className="text-lg font-bold text-slate-800">
+            {hasPotentials ? "Active Pursuit Ended" : "Dead End Reached"}
+          </h3>
+
+          <p className="text-sm text-slate-500 mt-2">
+            You disqualified the last active person at <strong className="text-slate-700">{companyName}</strong>.
+          </p>
+
+          {hasPotentials ? (
+            <p className="text-sm text-indigo-600 font-medium mt-2 bg-indigo-50 px-3 py-1 rounded-full">
+              But you have {newLeadsCount} potential leads in "New".
+            </p>
+          ) : (
+            <p className="text-sm text-slate-500 mt-1">There are no other leads in the pipeline.</p>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          {hasPotentials ? (
+            <button
+              onClick={onGoToNew}
+              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-colors"
+            >
+              <ArrowRight size={16} /> Review Leads in "New"
+            </button>
+          ) : (
+            <button
+              onClick={onScout}
+              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-colors"
+            >
+              <Search size={16} /> Scout New Contacts (Create Task)
+            </button>
+          )}
+
+          <button
+            onClick={onGiveUp}
+            className="w-full py-3 px-4 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl font-medium text-sm transition-colors"
+          >
+            Give up on Company
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 // --- COMPONENT: Detail Modal (Expanded) ---
 const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyze, onResearch, onDelete, onOpenLead, onToast }) => {
@@ -496,6 +555,13 @@ const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyz
     const next = history.map((h, i) => (i === editingIndex ? updated : h)).sort((a, b) => new Date(b.date) - new Date(a.date));
     setHistory(next);
     setEditingIndex(null);
+  };
+
+  const getStageColor = (s) => {
+    const stage = normalizeStage(s);
+    if (['Won', 'Connected', 'Qualified', 'Offer'].includes(stage)) return 'bg-emerald-500 ring-emerald-200';
+    if (['Disqualified'].includes(stage)) return 'bg-rose-500 ring-rose-200';
+    return 'bg-slate-300 ring-slate-200';
   };
 
   // --- STYLES ---
@@ -818,11 +884,15 @@ const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyz
                   <div
                     key={l.id}
                     onClick={() => onOpenLead ? onOpenLead(l) : onClose()}
-                    className="flex justify-between items-center py-2 border-b border-slate-50 hover:bg-slate-50 cursor-pointer -mx-2 px-2 rounded"
+                    className="flex justify-between items-center py-2 border-b border-slate-50 hover:bg-slate-50 cursor-pointer -mx-2 px-2 rounded group"
                   >
-                    <div>
-                      <div className="text-xs font-bold text-slate-700">{l.Name}</div>
-                      <div className="text-[10px] text-slate-400">{l.Title}</div>
+                    <div className="flex items-center gap-2">
+                      {/* STATUS DOT */}
+                      <div className={`w-2 h-2 rounded-full ring-2 ${getStageColor(l.Stage)}`} title={l.Stage}></div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-700">{l.Name}</div>
+                        <div className="text-[10px] text-slate-400">{l.Title}</div>
+                      </div>
                     </div>
                     <OwnerAvatar name={l.Owner} size="w-5 h-5" textSize="text-[9px]" />
                   </div>
@@ -931,7 +1001,6 @@ const DraggableLeadCard = (props) => {
 };
 
 // --- COMPONENT: Column ---
-// --- COMPONENT: Column (Updated: Popover Flips Down) ---
 const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusToggle, isFocused, currentSort, onChangeSort, showOwnerAvatar, collapseMulti, onToggleCollapse, scrollPos, onScrollPosChange, isMinimized, onToggleMinimize }) => {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [menuOpen, setMenuOpen] = useState(false);
@@ -996,15 +1065,15 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
     });
   };
 
-
+  // 1. MINIMIZED VIEW
   if (isMinimized) {
     return (
       <div
         ref={setNodeRef}
         onClick={onToggleMinimize}
         className={`
-          w-10 h-full flex flex-col items-center py-4 gap-4 transition-all duration-200 cursor-pointer flex-shrink-0 relative
-          ${isOver ? 'bg-indigo-100 ring-inset ring-2 ring-indigo-500' : 'bg-slate-50 hover:bg-slate-100'}
+          w-10 h-full flex flex-col items-center py-4 gap-4 transition-all duration-200 cursor-pointer flex-shrink-0 relative rounded-xl mr-4
+          ${isOver ? 'bg-indigo-50 ring-2 ring-indigo-500 ring-opacity-50 z-50' : 'bg-slate-50 hover:bg-slate-100'}
         `}
       >
         {/* Count Badge */}
@@ -1027,9 +1096,15 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
   }
   const stageInfo = STAGE_DEFINITIONS[title] || { icon: <HelpCircle size={14} />, desc: '', exit: '' };
 
-
+  // 2. EXPANDED VIEW
   return (
-    <div ref={setNodeRef} className="flex-shrink-0 w-64 h-full flex flex-col mr-4">
+    <div
+      ref={setNodeRef}
+      className={`
+        flex-shrink-0 w-64 h-full flex flex-col mr-4 transition-all duration-200 rounded-xl
+        ${isOver ? 'ring-2 ring-indigo-500 ring-opacity-50 bg-indigo-50/30' : ''} 
+      `}
+    >
       {/* --- COLUMN HEADER --- */}
       <div className={`group flex justify-between items-center mb-3 px-3 py-2 rounded-lg transition-colors relative ${isFocused ? 'bg-indigo-50 border border-indigo-100' : 'hover:bg-gray-200/50'}`}>
 
@@ -1218,6 +1293,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [showSummary, setShowSummary] = useState(false);
+  const [deadEndData, setDeadEndData] = useState(null);
   const [minimizedStages, setMinimizedStages] = useState(() => {
     try {
       const saved = localStorage.getItem(MINIMIZED_STAGES_LS_KEY);
@@ -1225,6 +1301,7 @@ export default function App() {
     } catch { return {}; }
   });
   const toastTimerRef = useRef(null);
+  const [viewMode, setViewMode] = useState('pipeline'); // 'pipeline' | 'companies'
 
   const notifyToast = (type, text) => {
     setToast({ type, text });
@@ -1266,6 +1343,40 @@ export default function App() {
   const uniqueOwners = useMemo(() => {
     return [...new Set(leads.map(l => l.Owner).filter(Boolean))].sort();
   }, [leads]);
+
+  const checkDeadEnd = (companyName, leadsList) => {
+    if (!companyName) return;
+
+    const companyLeads = leadsList.filter(l => l.Company === companyName);
+
+    // Bucket 1: Active Pursuit (People you are currently talking to)
+    // We exclude 'New' (haven't started) and 'Disqualified' (stopped).
+    const activeLeads = companyLeads.filter(l => {
+      const s = normalizeStage(l.Stage);
+      return s !== 'New' && s !== 'Disqualified' && s !== 'Won';
+    });
+
+    // Bucket 2: Potential (People sitting in the 'New' column)
+    const newLeads = companyLeads.filter(l => normalizeStage(l.Stage) === 'New');
+
+    // Bucket 3: Won (If we already won the account, stop nagging)
+    const wonLeads = companyLeads.filter(l => normalizeStage(l.Stage) === 'Won');
+
+    // TRIGGER: If we have NO active leads left, and we haven't won the account yet...
+    if (activeLeads.length === 0 && wonLeads.length === 0) {
+      setDeadEndData({
+        name: companyName,
+        newCount: newLeads.length
+      });
+    }
+  };
+
+  const handleReviewNewLeads = () => {
+    if (!deadEndData) return;
+    setSearchQuery(deadEndData.name); // Filters the board to this company
+    setDeadEndData(null);             // Closes the modal
+    notifyToast('info', `Filtered pipeline for ${deadEndData.name}`);
+  };
 
   useEffect(() => {
     if (!keys.github) return;
@@ -1310,7 +1421,21 @@ export default function App() {
     setActiveId(null);
     if (!over || active.id === over.id) return;
     const newStage = over.id;
-    saveLeadsToGithub(leads.map(l => l.id === active.id ? { ...l, Stage: newStage, 'Is Customer': newStage === 'Won' ? 'TRUE' : l['Is Customer'] } : l));
+
+    // 1. Get current lead to check previous state
+    const currentLead = leads.find(l => l.id === active.id);
+
+    // Optimistic Update
+    const updatedLeads = leads.map(l => l.id === active.id ? { ...l, Stage: newStage, 'Is Customer': newStage === 'Won' ? 'TRUE' : l['Is Customer'] } : l);
+    saveLeadsToGithub(updatedLeads);
+
+    // --- FIX: STATE TRANSITION CHECK ---
+    // Only trigger if moving FROM a non-disqualified stage TO disqualified
+    const wasAlive = normalizeStage(currentLead?.Stage) !== 'Disqualified';
+
+    if (wasAlive && newStage === 'Disqualified') {
+      if (currentLead) checkDeadEnd(currentLead.Company, updatedLeads);
+    }
   };
 
   const handleAdd = (type, data) => {
@@ -1339,10 +1464,49 @@ export default function App() {
   const handleUpdateLead = (updLead, updComp, opts) => {
     const enriched = { ...updLead, calculatedDays: getDaysSinceInteraction(updLead.History) };
     const p = [];
-    if (JSON.stringify(leads.find(l => l.id === updLead.id)) !== JSON.stringify(enriched)) p.push(saveLeadsToGithub(leads.map(l => l.id === updLead.id ? enriched : l)));
-    if (updComp && JSON.stringify(companies[updComp.Company]) !== JSON.stringify(updComp)) p.push(saveCompaniesToGithub({ ...companies, [updComp.Company]: updComp }));
+
+    // 1. Get the OLD version of this lead to compare
+    const originalLead = leads.find(l => l.id === updLead.id);
+
+    // Create new leads array for logic check
+    const updatedLeadsList = leads.map(l => l.id === updLead.id ? enriched : l);
+
+    if (JSON.stringify(originalLead) !== JSON.stringify(enriched)) {
+      p.push(saveLeadsToGithub(updatedLeadsList));
+    }
+    if (updComp && JSON.stringify(companies[updComp.Company]) !== JSON.stringify(updComp)) {
+      p.push(saveCompaniesToGithub({ ...companies, [updComp.Company]: updComp }));
+    }
     if (!opts?.silent) setDetailLead(enriched);
+
+    // --- FIX: STATE TRANSITION CHECK ---
+    // Only check for dead end if it was ALIVE before, and is DEAD now.
+    const wasAlive = normalizeStage(originalLead?.Stage) !== 'Disqualified';
+    const isNowDead = normalizeStage(enriched.Stage) === 'Disqualified';
+
+    if (wasAlive && isNowDead) {
+      checkDeadEnd(enriched.Company, updatedLeadsList);
+    }
+
     return Promise.all(p);
+  };
+
+  const handleScoutTask = () => {
+    if (!deadEndData) return; // Updated variable name
+    const taskLead = {
+      id: generateId('Scout'),
+      Name: 'Scout New Contacts',
+      Title: 'Research Task',
+      Company: deadEndData.name, // Access .name property
+      Stage: 'New',
+      Notes: 'Automated task: Previous contacts disqualified. Find new entry point.',
+      History: JSON.stringify([{ date: new Date().toISOString(), type: 'note', content: 'Auto-generated: Company hit a dead end. Need to scout new leads.' }]),
+      calculatedDays: 0,
+      Owner: ownerFilter === 'Unassigned' ? '' : ownerFilter
+    };
+    saveLeadsToGithub([taskLead, ...leads]);
+    setDeadEndData(null); // Updated setter
+    notifyToast('info', 'Scout task created in "New"');
   };
 
   const duplicatesSet = useMemo(() => {
@@ -1359,7 +1523,9 @@ export default function App() {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return leads.filter(l =>
-        l.Name.toLowerCase().includes(q) || l.Company.toLowerCase().includes(q)
+        l.Name.toLowerCase().includes(q) ||
+        l.Company.toLowerCase().includes(q) ||
+        (l.Email && l.Email.toLowerCase().includes(q))
       );
     }
     return leads.filter(l => {
@@ -1527,6 +1693,16 @@ export default function App() {
             {toast.type === 'info' && <Sparkles size={20} className="text-white" />}
             <span className="text-sm font-medium">{toast.text}</span>
           </div>
+        )}
+        {deadEndData && (
+          <CompanyStatusAlert
+            companyName={deadEndData.name}
+            newLeadsCount={deadEndData.newCount}
+            onClose={() => setDeadEndData(null)}
+            onScout={handleScoutTask}
+            onGiveUp={() => setDeadEndData(null)}
+            onGoToNew={handleReviewNewLeads}
+          />
         )}
       </div>
     </>

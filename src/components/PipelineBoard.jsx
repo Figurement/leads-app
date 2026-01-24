@@ -4,12 +4,12 @@ import {
     DndContext, useDraggable, useDroppable, DragOverlay, closestCorners,
     useSensor, useSensors, MouseSensor, TouchSensor
 } from '@dnd-kit/core';
-import { ChevronDown, ChevronLeft, Check, Building2, HelpCircle, CheckCircle2 } from 'lucide-react';
+import { ChevronDown, ChevronLeft, Check, Building2, HelpCircle, CheckCircle2, ArrowRight, CalendarClock } from 'lucide-react';
 import {
     STAGE_DEFINITIONS, ORDERED_STAGES, SORT_STRATEGIES,
     StatusBadge, EnterpriseMark, OwnerAvatar,
-    normalizeStage, isDue
-} from '../lib/utils'; // Importing from our new shared file
+    normalizeStage, isDue, toBool
+} from '../lib/utils';
 
 // --- INTERNAL COMPONENT: LeadCardUI ---
 export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, listeners, attributes, isOverlay, duplicatesSet, showOwnerAvatar }, ref) => {
@@ -20,6 +20,9 @@ export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, list
     const isActive = (stage === 'Qualified');
     const isDuplicate = duplicatesSet?.has(lead.id);
     const isEnterprise = (typeof company?.Employees === 'number') && company.Employees >= 500;
+    
+    // Extract Next Action
+    const nextActionText = lead['Next Action'];
 
     let historyLen = 0;
     try {
@@ -27,10 +30,6 @@ export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, list
         if (Array.isArray(h)) historyLen = h.length;
     } catch { }
 
-    const ownerName = lead.Owner || 'Unassigned';
-    const ownerInitial = ownerName === 'Unassigned' ? '?' : ownerName.charAt(0).toUpperCase();
-
-    // --- HEADER BADGE LOGIC (top-right) ---
     const headerBadge = (stage === 'Disqualified') ? null : (
         isDueToday
             ? <StatusBadge type="due" label="Due Today" />
@@ -47,11 +46,25 @@ export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, list
             onClick={() => !isOverlay && onOpen(lead)}
             className={`
         bg-white p-4 mb-3 rounded-xl shadow-sm border border-slate-200 
-        cursor-grab hover:shadow-md hover:border-indigo-300 transition-all duration-200 group relative
+        cursor-grab hover:shadow-md hover:border-indigo-300 transition-all duration-200 group relative overflow-hidden
         ${isOverlay ? 'shadow-2xl scale-105 rotate-1 z-50 ring-2 ring-indigo-500' : ''}
       `}
         >
-            {/* --- HEADER: COMPANY INFO (icon removed, elegant enterprise tag) --- */}
+            {/* --- HOVER OVERLAY: NEXT ACTION --- */}
+            {nextActionText && (
+                <div className="absolute inset-x-0 bottom-0 bg-slate-50/95 backdrop-blur-sm border-t border-indigo-100 p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-200 ease-out z-20">
+                    <div className="flex items-start gap-2">
+                        <div className="mt-0.5 text-indigo-500 shrink-0">
+                            <CalendarClock size={12} />
+                        </div>
+                        <p className="text-xs text-slate-700 font-medium leading-relaxed line-clamp-2">
+                            {nextActionText}
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* --- HEADER: COMPANY INFO --- */}
             <div className="flex items-center h-6 gap-1.5 mb-2 overflow-hidden ">
                 <span className="text-[10px] font-bold uppercase tracking-wider truncate text-slate-600">
                     {lead.Company}
@@ -67,7 +80,7 @@ export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, list
                 )}
             </div>
 
-            {/* --- BODY: LEAD DETAILS + Owner Avatar (compact) --- */}
+            {/* --- BODY: LEAD DETAILS --- */}
             <div className="space-y-1">
                 <div>
                     <h4 className="font-bold text-slate-800 text-sm leading-snug">{lead.Name}</h4>
@@ -101,7 +114,6 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
     const scrollRef = useRef(null);
     const prevScrollTopRef = useRef(0);
 
-    // Retrieve the actual object for the current sort (Label + Icon)
     const activeSortData = SORT_STRATEGIES[currentSort] || SORT_STRATEGIES.momentum;
 
     useEffect(() => {
@@ -156,6 +168,9 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
         });
     };
 
+    // Shared style for header action buttons (Sort & Minimize)
+    const headerActionBtn = "w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-indigo-600 hover:bg-white hover:shadow-sm transition-all duration-200 cursor-pointer";
+
     // 1. MINIMIZED VIEW
     if (isMinimized) {
         return (
@@ -167,19 +182,15 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
           ${isOver ? 'bg-indigo-50 ring-2 ring-indigo-500 ring-opacity-50 z-50' : 'bg-slate-50 hover:bg-slate-100'}
         `}
             >
-                {/* Count Badge (Unified style) */}
                 <div className="flex items-center justify-center h-7 mt-1 mb-2">
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white text-indigo-600 shadow-sm border border-slate-200">
                         {leads.length}
                     </span>
                 </div>
-
-                {/* Rotated Label (Vertical Text) with icon below */}
                 <div className="flex-1 flex flex-col items-center justify-start">
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap [writing-mode:vertical-rl] rotate-180 select-none mt-0">
                         {title}
                     </span>
-
                     <div className="text-slate-400 mt-2">
                         {STAGE_DEFINITIONS[title]?.icon}
                     </div>
@@ -201,14 +212,11 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
             {/* --- COLUMN HEADER --- */}
             <div className={`group flex justify-between items-center mb-3 px-3 py-2 rounded-lg transition-colors relative ${isFocused ? 'bg-indigo-50 border border-indigo-100' : 'hover:bg-gray-200/50'}`}>
 
-                {/* GUIDELINE POPOVER (Positioned BELOW the header to avoid clipping) */}
+                {/* GUIDELINE POPOVER */}
                 {guideOpen && (
                     <div className="absolute top-full left-0 mt-2 w-64 z-[100] animate-in fade-in slide-in-from-top-1 duration-200">
                         <div className="bg-slate-800 p-4 rounded-xl shadow-2xl border border-slate-700 relative">
-                            {/* Arrow pointing UP */}
                             <div className="absolute -top-1.5 left-6 w-3 h-3 bg-slate-800 border-t border-l border-slate-700 rotate-45 transform"></div>
-
-                            {/* Content (Clean, No Icon) */}
                             <p className="text-xs text-slate-300 font-medium leading-relaxed mb-3">
                                 {stageInfo.desc}
                             </p>
@@ -231,15 +239,12 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
                     onMouseEnter={() => setGuideOpen(true)}
                     onMouseLeave={() => setGuideOpen(false)}
                 >
-                    {/* Stage Icon */}
                     <span className={`inline-flex items-center justify-center ${isFocused ? 'text-indigo-600' : 'text-slate-400'}`}>
                         {stageInfo.icon}
                     </span>
-                    {/* Title */}
                     <span className={`text-xs font-bold uppercase tracking-wider ${isFocused ? 'text-indigo-700' : 'text-slate-500'}`}>
                         {title}
                     </span>
-                    {/* Count Pill (Unified style and alignment) */}
                     <span className="flex items-center justify-center h-7 mt-1 mb-2">
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white text-indigo-600 shadow-sm border border-slate-200">
                             {leads.length}
@@ -247,26 +252,28 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
                     </span>
                 </div>
 
-                {/* Right Side: SORT BADGE + CHEVRON */}
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" ref={menuRef}>
-                    {/* Sort menu trigger (keeps menu) */}
-                    <div
-                        className="flex items-center gap-1.5 px-2 py-1 rounded bg-white border border-slate-200 shadow-sm cursor-pointer hover:border-indigo-300"
+                {/* Right Side: UNIFIED ACTION BUTTONS */}
+                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" ref={menuRef}>
+                    
+                    {/* Button 1: Sort (Icon Only) */}
+                    <button
+                        className={headerActionBtn}
                         onClick={() => setMenuOpen(!menuOpen)}
-                        title={`Sorted by ${activeSortData.label}: ${activeSortData.desc}`}
+                        title={`Sorted by ${activeSortData.label}`}
                     >
-                        <span className="text-xs">{activeSortData.icon}</span>
-                        <span className="text-[9px] font-bold uppercase tracking-wide text-slate-500">{activeSortData.label}</span>
-                    </div>
-                    {/* Chevron for minimize */}
+                        {activeSortData.icon}
+                    </button>
+
+                    {/* Button 2: Minimize */}
                     <button
                         onClick={onToggleMinimize}
-                        className="p-1.5 rounded-md hover:bg-white hover:shadow-sm transition-all text-slate-400 hover:text-indigo-600"
+                        className={headerActionBtn}
                         title="Minimize Column"
                     >
                         <ChevronLeft size={16} className={isMinimized ? 'rotate-180 transition-transform' : 'transition-transform'} />
                     </button>
-                    {/* The menu is only shown when clicking the sort badge above */}
+
+                    {/* Menu Dropdown */}
                     {menuOpen && (
                         <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100 origin-top-right">
                             <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-50">Sort By</div>
@@ -305,26 +312,22 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
             >
                 <div className="h-2" />
 
-                {/* NON-COLLAPSED MODE */}
                 {!collapseMulti && (
                     sortedLeads.map(lead => {
                         return (
                             <div key={lead.id} className="relative group/card">
-
                                 <DraggableLeadCard lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} />
                             </div>
                         );
                     })
                 )}
 
-                {/* COLLAPSED MODE */}
                 {collapseMulti && (
                     groupedByCompany.map(group => {
                         if (group.items.length <= 1) {
                             const lead = group.items[0];
                             return (
                                 <div key={lead.id} className="relative group/card">
-
                                     <DraggableLeadCard lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} />
                                 </div>
                             );
@@ -355,7 +358,6 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
                                     </div>
                                     <div className="flex justify-between items-start">
                                         <div className="flex-1 min-w-0 pr-2">
-                                            {/* Aligned text size/leading to match LeadCardUI body more closely */}
                                             <h4 className="font-bold text-slate-800 text-sm leading-snug mb-0.5">{group.items.length} Contacts</h4>
                                             <p className="text-xs text-slate-500 truncate">{group.items.map(i => i.Name).join(', ')}</p>
                                         </div>
@@ -373,7 +375,6 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
                         );
                     })
                 )}
-
                 {sortedLeads.length === 0 && (<div className="h-24 flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-xl m-2"><span className="text-xs">Empty</span></div>)}
             </div>
         </div>
@@ -383,8 +384,7 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
 // --- EXPORTED PIPELINE BOARD ---
 export const PipelineBoard = ({
     leads, companies, searchQuery, filters, duplicatesSet, ownerFilter,
-    onDragEnd, onOpenLead, activeLead, setActiveId, // Added setters for full control
-    // View State (Passed from App.jsx so it persists)
+    onDragEnd, onOpenLead, activeLead, setActiveId,
     focusedStage, setFocusedStage,
     columnSorts, setColumnSorts,
     columnCollapse, setColumnCollapse,

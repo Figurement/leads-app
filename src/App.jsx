@@ -258,7 +258,8 @@ export default function App() {
               onUpdateCompany={handleUpdateCompany}
               onRenameCompany={handleRenameCompany}
               onDeleteCompany={handleDeleteCompany}
-              onResearchCompany={researchCompany} // Correctly passed
+              onResearchCompany={researchCompany}
+              onOpenLead={setDetailLead} // <--- Added this prop
             />
           ) : (
             <PipelineBoard

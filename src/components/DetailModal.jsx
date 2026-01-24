@@ -72,6 +72,7 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
         const newEntry = { date: logDate.toISOString(), type: messageType, content: newMessage };
         setHistory([...history, newEntry].sort((a, b) => new Date(b.date) - new Date(a.date)));
         setNewMessage("");
+        setLogDate(new Date()); // Reset date to now after sending
     };
 
     const handleResearch = async () => {
@@ -207,12 +208,27 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
                             );
                         })}
                     </div>
-                    <div className="p-4 border-t border-slate-100">
+                    <div className="p-4 border-t border-slate-100 bg-white">
+                        <div className="flex items-center justify-between mb-2">
+                             <div className="flex gap-2">
+                                {['user', 'lead', 'note'].map(t => (
+                                    <button 
+                                        key={t} 
+                                        onClick={() => setMessageType(t)} 
+                                        className={`px-3 py-1 text-[10px] uppercase font-bold rounded-full tracking-wide transition-colors ${messageType === t ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
+                                    >
+                                        {t === 'user' ? 'Me' : t === 'lead' ? 'Them' : 'Note'}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="w-40">
+                                <CustomDatePicker selected={logDate} onChange={setLogDate} showTimeSelect dateFormat="MMM d, HH:mm" />
+                            </div>
+                        </div>
                         <div className="relative">
                             <textarea className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 pr-12 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-all resize-none placeholder:text-slate-400" rows={2} placeholder="Log activity or note..." value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} />
-                            <div className="absolute right-2 bottom-2 flex gap-1">
-                                <select value={messageType} onChange={e => setMessageType(e.target.value)} className="text-[10px] uppercase font-bold bg-transparent text-slate-400 outline-none cursor-pointer"><option value="user">Me</option><option value="lead">Lead</option><option value="note">Note</option></select>
-                                <button onClick={handleSendMessage} className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"><ArrowRight size={14} /></button>
+                            <div className="absolute right-2 bottom-2">
+                                <button onClick={handleSendMessage} className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"><ArrowRight size={14} /></button>
                             </div>
                         </div>
                     </div>

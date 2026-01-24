@@ -167,9 +167,11 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
           ${isOver ? 'bg-indigo-50 ring-2 ring-indigo-500 ring-opacity-50 z-50' : 'bg-slate-50 hover:bg-slate-100'}
         `}
             >
-                {/* Count Badge */}
-                <div className="bg-slate-200 text-slate-600 text-[10px] font-bold h-6 min-w-[24px] px-1 rounded-full flex items-center justify-center z-10">
-                    {leads.length}
+                {/* Count Badge (Unified style) */}
+                <div className="flex items-center justify-center h-7 mt-1 mb-2">
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white text-indigo-600 shadow-sm border border-slate-200">
+                        {leads.length}
+                    </span>
                 </div>
 
                 {/* Rotated Label (Vertical Text) with icon below */}
@@ -237,9 +239,11 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
                     <span className={`text-xs font-bold uppercase tracking-wider ${isFocused ? 'text-indigo-700' : 'text-slate-500'}`}>
                         {title}
                     </span>
-                    {/* Count Pill */}
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isFocused ? 'bg-white text-indigo-600 shadow-sm' : 'bg-slate-200 text-slate-600'}`}>
-                        {leads.length}
+                    {/* Count Pill (Unified style and alignment) */}
+                    <span className="flex items-center justify-center h-7 mt-1 mb-2">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white text-indigo-600 shadow-sm border border-slate-200">
+                            {leads.length}
+                        </span>
                     </span>
                 </div>
 

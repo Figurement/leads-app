@@ -133,7 +133,7 @@ export const CompanyManager = ({
                                 <th className="px-6 py-3 w-1/6">Category</th>
                                 <th className="px-6 py-3 w-1/5">Website</th>
                                 <th className="px-6 py-3">Location</th>
-                                <th className="px-6 py-3 w-24">Empl.</th>
+                                <th className="px-6 py-3 w-32">Empl.</th>
                                 <th className="px-6 py-3 text-center">Leads</th>
                                 <th className="px-6 py-3 text-right">Actions</th>
                             </tr>
@@ -148,22 +148,12 @@ export const CompanyManager = ({
                                         <td className="px-6 py-3">
                                             {isEditing ? (
                                                 <div className="flex flex-col gap-1">
-                                                    <div className="flex gap-1">
-                                                        <input
-                                                            className="w-full border border-indigo-300 rounded px-2 py-1 font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                                            value={editForm.Company || ''}
-                                                            onChange={e => setEditForm({ ...editForm, Company: e.target.value })}
-                                                            placeholder="Company Name"
-                                                        />
-                                                        <button
-                                                            onClick={handleAutoFill}
-                                                            disabled={isResearching}
-                                                            className="p-1.5 bg-indigo-600 text-white rounded shadow-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                                                            title="Auto-fill data with AI"
-                                                        >
-                                                            {isResearching ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                                                        </button>
-                                                    </div>
+                                                    <input
+                                                        className="w-full border border-indigo-300 rounded px-2 py-1 font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                        value={editForm.Company || ''}
+                                                        onChange={e => setEditForm({ ...editForm, Company: e.target.value })}
+                                                        placeholder="Company Name"
+                                                    />
                                                     {editForm.Company !== c.Company && (
                                                         <div className="text-[10px] text-amber-600 flex items-center gap-1 font-bold">
                                                             <Merge size={10} /> Will Rename
@@ -231,6 +221,14 @@ export const CompanyManager = ({
                                         <td className="px-6 py-3 text-right">
                                             {isEditing ? (
                                                 <div className="flex justify-end gap-2">
+                                                    <button
+                                                        onClick={handleAutoFill}
+                                                        disabled={isResearching}
+                                                        className="p-1.5 bg-indigo-600 text-white rounded shadow-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                                                        title="Auto-fill data with AI"
+                                                    >
+                                                        {isResearching ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                                                    </button>
                                                     <button onClick={() => setEditingId(null)} className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-200 rounded">Cancel</button>
                                                     <button onClick={saveEdit} className="px-3 py-1 text-xs bg-indigo-600 text-white rounded shadow-sm hover:bg-indigo-700 flex items-center gap-1"><Save size={12} /> Save</button>
                                                 </div>

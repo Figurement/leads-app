@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Trash2, Copy, ArrowRight, Sparkles, Pencil } from 'lucide-react';
-import { safeJSONParse, normalizeStage, parseDateStr, formatDateStr, isDue, ORDERED_STAGES } from '../lib/utils';
+// 1. IMPORT toBool HERE
+import { safeJSONParse, normalizeStage, parseDateStr, formatDateStr, isDue, ORDERED_STAGES, toBool } from '../lib/utils';
 import { CustomDatePicker, OwnerAvatar } from './SharedUI';
 
 export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyze, onResearch, onDelete, onOpenLead, onToast }) => {
     const [companyData, setCompanyData] = useState(companies[lead.Company] || { Company: lead.Company });
-    const otherLeads = leads.filter(l => l.Company === companyData.Company && l.id !== lead.id);
+    const otherLeads = companyData.Company ? leads.filter(l => l.Company === companyData.Company && l.id !== lead.id) : [];
 
     const [history, setHistory] = useState(() => {
         let initialHistory = [];
@@ -21,7 +22,14 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
 
     const [newMessage, setNewMessage] = useState("");
     const [messageType, setMessageType] = useState('user');
-    const [details, setDetails] = useState({ ...lead });
+
+    // 2. CONVERT STRINGS TO REAL BOOLEANS ON INIT
+    const [details, setDetails] = useState({
+        ...lead,
+        Beta: toBool(lead.Beta),
+        Trial: toBool(lead.Trial)
+    });
+
     const [logDate, setLogDate] = useState(new Date());
     const [editingIndex, setEditingIndex] = useState(null);
     const [editDraft, setEditDraft] = useState({ content: '', type: 'note', date: new Date() });
@@ -46,23 +54,41 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
     useEffect(() => { historyRef.current = history; }, [history]);
     useEffect(() => { companyRef.current = companyData; }, [companyData]);
 
+    // 3. CONVERT BOOLEANS BACK TO STRINGS ON SAVE
     useEffect(() => {
         if (initialRenderRef.current) { initialRenderRef.current = false; return; }
         if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+
         autosaveTimerRef.current = setTimeout(() => {
             setSaveState('saving');
-            Promise.resolve(onSaveRef.current({ ...details, History: JSON.stringify(history) }, companyData))
+
+            // Prepare data for App.jsx format
+            const payload = {
+                ...details,
+                Beta: details.Beta ? 'true' : 'false',
+                Trial: details.Trial ? 'true' : 'false',
+                History: JSON.stringify(history)
+            };
+
+            Promise.resolve(onSaveRef.current(payload, companyData))
                 .then(() => { setSaveState('saved'); setTimeout(() => setSaveState('idle'), 1200); })
                 .catch(() => setSaveState('idle'));
         }, 800);
         return () => clearTimeout(autosaveTimerRef.current);
     }, [details, companyData, history]);
 
+    // Cleanup Save
     useEffect(() => {
         return () => {
             if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
             try {
-                onSaveRef.current({ ...detailsRef.current, History: JSON.stringify(historyRef.current) }, companyRef.current, { silent: true });
+                const payload = {
+                    ...detailsRef.current,
+                    Beta: detailsRef.current.Beta ? 'true' : 'false',
+                    Trial: detailsRef.current.Trial ? 'true' : 'false',
+                    History: JSON.stringify(historyRef.current)
+                };
+                onSaveRef.current(payload, companyRef.current, { silent: true });
             } catch { }
         };
     }, []);
@@ -72,7 +98,7 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
         const newEntry = { date: logDate.toISOString(), type: messageType, content: newMessage };
         setHistory([...history, newEntry].sort((a, b) => new Date(b.date) - new Date(a.date)));
         setNewMessage("");
-        setLogDate(new Date()); // Reset date to now after sending
+        setLogDate(new Date());
     };
 
     const handleResearch = async () => {
@@ -145,7 +171,27 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
                             </div>
                         </div>
                     </div>
+
                     <div className="px-6 py-4 pb-6 space-y-5 border-t border-slate-200 mt-auto bg-white">
+                        {/* 4. TOGGLES - THESE NOW WORK BECAUSE STATE IS REAL BOOLEAN */}
+                        <div>
+                            <label className={labelStyle}>Program Status</label>
+                            <div className="flex gap-2 pt-1">
+                                <button
+                                    onClick={() => setDetails(prev => ({ ...prev, Beta: !prev.Beta }))}
+                                    className={`flex-1 py-1.5 text-[10px] uppercase font-bold tracking-wider rounded border transition-all ${details.Beta ? 'bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm' : 'bg-transparent border-slate-200 text-slate-300 hover:border-slate-300 hover:text-slate-400'}`}
+                                >
+                                    Beta User
+                                </button>
+                                <button
+                                    onClick={() => setDetails(prev => ({ ...prev, Trial: !prev.Trial }))}
+                                    className={`flex-1 py-1.5 text-[10px] uppercase font-bold tracking-wider rounded border transition-all ${details.Trial ? 'bg-emerald-50 border-emerald-200 text-emerald-600 shadow-sm' : 'bg-transparent border-slate-200 text-slate-300 hover:border-slate-300 hover:text-slate-400'}`}
+                                >
+                                    Trialing
+                                </button>
+                            </div>
+                        </div>
+
                         <div>
                             <label className={labelStyle}>Pipeline Stage</label>
                             <select value={details.Stage} onChange={e => setDetails({ ...details, Stage: e.target.value })} className="w-full bg-transparent border-b border-slate-200 text-sm py-1 outline-none focus:border-indigo-500 text-slate-700 cursor-pointer">
@@ -210,11 +256,11 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
                     </div>
                     <div className="p-4 border-t border-slate-100 bg-white">
                         <div className="flex items-center justify-between mb-2">
-                             <div className="flex gap-2">
+                            <div className="flex gap-2">
                                 {['user', 'lead', 'note'].map(t => (
-                                    <button 
-                                        key={t} 
-                                        onClick={() => setMessageType(t)} 
+                                    <button
+                                        key={t}
+                                        onClick={() => setMessageType(t)}
                                         className={`px-3 py-1 text-[10px] uppercase font-bold rounded-full tracking-wide transition-colors ${messageType === t ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
                                     >
                                         {t === 'user' ? 'Me' : t === 'lead' ? 'Them' : 'Note'}

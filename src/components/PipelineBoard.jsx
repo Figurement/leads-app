@@ -20,7 +20,7 @@ export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, list
     const isActive = (stage === 'Qualified');
     const isDuplicate = duplicatesSet?.has(lead.id);
     const isEnterprise = (typeof company?.Employees === 'number') && company.Employees >= 500;
-    
+
     // Extract Next Action
     const nextActionText = lead['Next Action'];
 
@@ -44,6 +44,7 @@ export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, list
         <div
             ref={ref} style={style} {...listeners} {...attributes}
             onClick={() => !isOverlay && onOpen(lead)}
+            // RESTORED: Standard 1px indigo hover border
             className={`
         bg-white p-4 mb-3 rounded-xl shadow-sm border border-slate-200 
         cursor-grab hover:shadow-md hover:border-indigo-300 transition-all duration-200 group relative overflow-hidden
@@ -52,7 +53,13 @@ export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, list
         >
             {/* --- HOVER OVERLAY: NEXT ACTION --- */}
             {nextActionText && (
-                <div className="absolute inset-x-0 bottom-0 bg-slate-50/95 backdrop-blur-sm border-t border-indigo-100 p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-200 ease-out z-20">
+                <div className={`
+                    absolute inset-x-0 bottom-0 bg-slate-50/95 backdrop-blur-sm 
+                    border-t border-indigo-300 /* <--- EXACT MATCH: 1px indigo-300 to match card hover */
+                    p-3 
+                    translate-y-full group-hover:translate-y-0 transition-transform duration-200 ease-out z-20
+                    rounded-b-xl
+                `}>
                     <div className="flex items-start gap-2">
                         <div className="mt-0.5 text-indigo-500 shrink-0">
                             <CalendarClock size={12} />
@@ -254,7 +261,7 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
 
                 {/* Right Side: UNIFIED ACTION BUTTONS */}
                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" ref={menuRef}>
-                    
+
                     {/* Button 1: Sort (Icon Only) */}
                     <button
                         className={headerActionBtn}

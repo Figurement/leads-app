@@ -22,6 +22,7 @@ import { ModalWrapper } from './components/SharedUI';
 import { AddModal } from './components/AddModal';
 import { CompanyStatusAlert } from './components/CompanyStatusAlert';
 import { DetailModal } from './components/DetailModal';
+import { MailMergeModal, MailMergeSelectionBar } from './components/MailMergeModal';
 
 // --- GLOBAL STYLES (Font & Reset) ---
 const GlobalStyles = () => (
@@ -68,7 +69,7 @@ export default function App() {
   const [activeId, setActiveId] = useState(null);
   const [toast, setToast] = useState(null);
   const [ownerConfirmed, setOwnerConfirmed] = useState(!!ownerFilter); // For first time setup
-  const [copiedEmail, setCopiedEmail] = useState(false); // <--- FIXED: Added missing state
+  const [copiedEmail, setCopiedEmail] = useState(false);
 
   // Board State (Lifted state to persist when switching tabs)
   const [focusedStage, setFocusedStage] = useState(null);
@@ -85,6 +86,11 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(!keys.github || !keys.gemini || ownerFilter === undefined);
   const [showSummary, setShowSummary] = useState(false);
   const [deadEndData, setDeadEndData] = useState(null);
+
+  // Mail Merge State
+  const [mailMergeMode, setMailMergeMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showMailMergeModal, setShowMailMergeModal] = useState(false);
 
   const { askGemini, researchCompany, researchLead, advice, setAdvice, loading: geminiLoading } = useGemini(keys.gemini);
   const toastTimerRef = useRef(null);
@@ -124,22 +130,34 @@ export default function App() {
   const saveLeadsToGithub = (newLeads) => { setLeads(newLeads); return saveCSV(keys.github, REPO_OWNER, REPO_NAME, LEADS_PATH, newLeads, sha.leads).then(r => setSha(p => ({ ...p, leads: r.content.sha }))).catch(() => alert("Save failed")); };
   const saveCompaniesToGithub = (newComp) => { setCompanies(newComp); return saveCSV(keys.github, REPO_OWNER, REPO_NAME, COMPANIES_PATH, Object.values(newComp), sha.companies).then(r => setSha(p => ({ ...p, companies: r.content.sha }))); };
 
+  // --- HELPER: CHECK DEAD END ---
+  const checkForDeadEnd = (currentLeads, companyName) => {
+    const companyLeads = currentLeads.filter(l => l.Company === companyName);
+    const activeLeads = companyLeads.filter(l => {
+      const s = normalizeStage(l.Stage);
+      return s !== 'New' && s !== 'Disqualified' && s !== 'Won';
+    });
+    const wonLeads = companyLeads.filter(l => normalizeStage(l.Stage) === 'Won');
+    const newLeads = companyLeads.filter(l => normalizeStage(l.Stage) === 'New');
+
+    if (activeLeads.length === 0 && wonLeads.length === 0) {
+      setDeadEndData({ name: companyName, newCount: newLeads.length });
+    }
+  };
+
   // --- HANDLERS ---
   const handleDragEnd = ({ active, over }) => {
     setActiveId(null); if (!over || active.id === over.id) return;
     const newStage = over.id;
     const currentLead = leads.find(l => l.id === active.id);
     const updatedLeads = leads.map(l => l.id === active.id ? { ...l, Stage: newStage, 'Is Customer': newStage === 'Won' ? 'TRUE' : l['Is Customer'] } : l);
+
     saveLeadsToGithub(updatedLeads);
 
     // Check Dead End
     const wasAlive = normalizeStage(currentLead?.Stage) !== 'Disqualified';
     if (wasAlive && newStage === 'Disqualified') {
-      const companyLeads = updatedLeads.filter(l => l.Company === currentLead.Company);
-      const activeLeads = companyLeads.filter(l => { const s = normalizeStage(l.Stage); return s !== 'New' && s !== 'Disqualified' && s !== 'Won'; });
-      const newLeads = companyLeads.filter(l => normalizeStage(l.Stage) === 'New');
-      const wonLeads = companyLeads.filter(l => normalizeStage(l.Stage) === 'Won');
-      if (activeLeads.length === 0 && wonLeads.length === 0) setDeadEndData({ name: currentLead.Company, newCount: newLeads.length });
+      checkForDeadEnd(updatedLeads, currentLead.Company);
     }
   };
 
@@ -159,10 +177,42 @@ export default function App() {
     const p = [];
     const originalLead = leads.find(l => l.id === updLead.id);
     const updatedLeadsList = leads.map(l => l.id === updLead.id ? enriched : l);
-    if (JSON.stringify(originalLead) !== JSON.stringify(enriched)) p.push(saveLeadsToGithub(updatedLeadsList));
-    if (updComp && JSON.stringify(companies[updComp.Company]) !== JSON.stringify(updComp)) p.push(saveCompaniesToGithub({ ...companies, [updComp.Company]: updComp }));
+
+    if (JSON.stringify(originalLead) !== JSON.stringify(enriched)) {
+      p.push(saveLeadsToGithub(updatedLeadsList));
+
+      // CASE 1: Status changed to Disqualified
+      const oldStage = normalizeStage(originalLead?.Stage);
+      const newStage = normalizeStage(enriched.Stage);
+      if (oldStage !== 'Disqualified' && newStage === 'Disqualified') {
+        checkForDeadEnd(updatedLeadsList, enriched.Company);
+      }
+
+      // CASE 2: Company changed (Lead left the old company)
+      // We need to check if the OLD company is now empty
+      if (originalLead.Company !== enriched.Company) {
+        checkForDeadEnd(updatedLeadsList, originalLead.Company);
+      }
+    }
+
+    if (updComp && JSON.stringify(companies[updComp.Company]) !== JSON.stringify(updComp)) {
+      p.push(saveCompaniesToGithub({ ...companies, [updComp.Company]: updComp }));
+    }
+
     if (!opts?.silent) setDetailLead(enriched);
     return Promise.all(p);
+  };
+
+  const handleDeleteLead = (id) => {
+    const leadToDelete = leads.find(l => l.id === id);
+    const updatedLeads = leads.filter(l => l.id !== id);
+
+    saveLeadsToGithub(updatedLeads).then(() => {
+      setDetailLead(null);
+      if (leadToDelete) {
+        checkForDeadEnd(updatedLeads, leadToDelete.Company);
+      }
+    });
   };
 
   const handleRenameCompany = (oldName, newName) => {
@@ -191,11 +241,55 @@ export default function App() {
     saveLeadsToGithub([taskLead, ...leads]); setDeadEndData(null); notifyToast('info', 'Scout task created in "New"');
   };
 
-  // --- FIXED: Added missing handler for Dead End Alert ---
   const handleReviewNewLeads = () => {
     if (!deadEndData) return;
     setSearchQuery(deadEndData.name); // Filter the board to this company
     setDeadEndData(null);
+  };
+
+  // --- MAIL MERGE HANDLERS ---
+  const handleToggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAllColumn = (stageId, leadIds) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      const allSelected = leadIds.every(id => next.has(id));
+      if (allSelected) { leadIds.forEach(id => next.delete(id)); }
+      else { leadIds.forEach(id => next.add(id)); }
+      return next;
+    });
+  };
+
+  const handleMailMergeLogOutreach = (mergeLeads, campaignName) => {
+    const now = new Date().toISOString();
+    const updatedLeads = leads.map(lead => {
+      if (!mergeLeads.find(ml => ml.id === lead.id)) return lead;
+      const history = lead.History ? JSON.parse(lead.History) : [];
+      history.push({ date: now, type: 'user', content: `Mail merge: ${campaignName}` });
+      return { ...lead, History: JSON.stringify(history), calculatedDays: 0 };
+    });
+    saveLeadsToGithub(updatedLeads);
+    notifyToast('success', `Outreach logged for ${mergeLeads.length} leads`);
+  };
+
+  const handleRemoveFromMerge = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const exitMailMergeMode = () => {
+    setMailMergeMode(false);
+    setSelectedIds(new Set());
+    setShowMailMergeModal(false);
   };
 
   return (
@@ -241,6 +335,20 @@ export default function App() {
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => setShowSummary(true)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors" title="Daily Summary"><Calendar size={20} /></button>
+            {viewMode === 'pipeline' && (
+              <button
+                onClick={() => { if (mailMergeMode) { exitMailMergeMode(); } else { setMailMergeMode(true); } }}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all border ${
+                  mailMergeMode
+                    ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
+                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'
+                }`}
+                title="Mail Merge Mode"
+              >
+                <Mail size={16} />
+                <span className="hidden sm:inline">{mailMergeMode ? 'Exit Merge' : 'Mail Merge'}</span>
+              </button>
+            )}
             <button onClick={() => setShowAddModal(true)} className="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg text-sm shadow-md shadow-indigo-200"><Plus size={16} /> <span className="hidden sm:inline">Add</span></button>
             <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"><Settings size={20} /></button>
           </div>
@@ -259,7 +367,7 @@ export default function App() {
               onRenameCompany={handleRenameCompany}
               onDeleteCompany={handleDeleteCompany}
               onResearchCompany={researchCompany}
-              onOpenLead={setDetailLead} // <--- Added this prop
+              onOpenLead={setDetailLead}
             />
           ) : (
             <PipelineBoard
@@ -272,15 +380,36 @@ export default function App() {
               columnScroll={columnScroll} setColumnScroll={setColumnScroll}
               minimizedStages={minimizedStages} setMinimizedStages={setMinimizedStages}
               onDragEnd={handleDragEnd} onOpenLead={setDetailLead}
+              mailMergeMode={mailMergeMode} selectedIds={selectedIds}
+              onToggleSelect={handleToggleSelect} onSelectAllColumn={handleSelectAllColumn}
             />
           )}
         </main>
 
         {/* MODALS */}
         {showAddModal && <AddModal companies={companies} leads={leads} owners={uniqueOwners} onClose={() => setShowAddModal(false)} onSave={handleAdd} onResearchLead={researchLead} onResearchCompany={researchCompany} />}
-        {detailLead && <DetailModal lead={detailLead} companies={companies} leads={leads} owners={uniqueOwners} onClose={() => setDetailLead(null)} onOpenLead={setDetailLead} onSave={handleUpdateLead} onAnalyze={askGemini} onResearch={researchCompany} onToast={notifyToast} onDelete={id => saveLeadsToGithub(leads.filter(l => l.id !== id)).then(() => setDetailLead(null))} />}
+        {detailLead && <DetailModal lead={detailLead} companies={companies} leads={leads} owners={uniqueOwners} onClose={() => setDetailLead(null)} onOpenLead={setDetailLead} onSave={handleUpdateLead} onAnalyze={askGemini} onResearch={researchCompany} onToast={notifyToast} onDelete={handleDeleteLead} />}
         {showSummary && <DailySummaryModal leads={leads} onClose={() => setShowSummary(false)} />}
         {deadEndData && <CompanyStatusAlert companyName={deadEndData.name} newLeadsCount={deadEndData.newCount} onClose={() => setDeadEndData(null)} onScout={handleScoutTask} onGiveUp={() => setDeadEndData(null)} onGoToNew={handleReviewNewLeads} />}
+
+        {/* MAIL MERGE */}
+        {mailMergeMode && (
+          <MailMergeSelectionBar
+            selectedCount={selectedIds.size}
+            onOpenMerge={() => setShowMailMergeModal(true)}
+            onClearSelection={() => setSelectedIds(new Set())}
+            onCancel={exitMailMergeMode}
+          />
+        )}
+        {showMailMergeModal && (
+          <MailMergeModal
+            selectedLeads={leads.filter(l => selectedIds.has(l.id))}
+            companies={companies}
+            onClose={() => setShowMailMergeModal(false)}
+            onLogOutreach={handleMailMergeLogOutreach}
+            onRemoveLead={handleRemoveFromMerge}
+          />
+        )}
 
         {/* SETTINGS MODAL */}
         {showSettings && (

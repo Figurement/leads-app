@@ -1,18 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Trash2, Copy, ArrowRight, Sparkles, Pencil } from 'lucide-react';
-// 1. IMPORT toBool HERE
 import { safeJSONParse, normalizeStage, parseDateStr, formatDateStr, isDue, ORDERED_STAGES, toBool } from '../lib/utils';
 import { CustomDatePicker, OwnerAvatar } from './SharedUI';
 
 export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, onAnalyze, onResearch, onDelete, onOpenLead, onToast }) => {
+    // Initialize Company Data
     const [companyData, setCompanyData] = useState(companies[lead.Company] || { Company: lead.Company });
     const otherLeads = companyData.Company ? leads.filter(l => l.Company === companyData.Company && l.id !== lead.id) : [];
 
+    // Initialize History
     const [history, setHistory] = useState(() => {
         let initialHistory = [];
         if (lead.History && lead.History.startsWith('[')) {
             initialHistory = safeJSONParse(lead.History);
         } else if (lead.Notes) {
+            // Legacy Note Support
             let legacyDate = new Date(0);
             if (lead.Date) { const parsed = parseDateStr(lead.Date); if (parsed) legacyDate = parsed; }
             initialHistory = [{ date: legacyDate.toISOString(), type: 'note', content: lead.Notes, isLegacy: true }];
@@ -23,7 +25,7 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
     const [newMessage, setNewMessage] = useState("");
     const [messageType, setMessageType] = useState('user');
 
-    // 2. CONVERT STRINGS TO REAL BOOLEANS ON INIT
+    // Initialize Details (Convert Strings to Booleans for internal state)
     const [details, setDetails] = useState({
         ...lead,
         Beta: toBool(lead.Beta),
@@ -36,25 +38,37 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
     const [saveState, setSaveState] = useState('idle');
     const [empFocused, setEmpFocused] = useState(false);
 
+    // Helpers
     const formatEmployees = (v) => {
         const d = String(v ?? '').replace(/[^0-9]/g, '');
         if (!d) return '';
         return new Intl.NumberFormat('da-DK').format(Number(d));
     };
 
+    const getStageColor = (s) => {
+        const stage = normalizeStage(s);
+        if (['Won', 'Connected', 'Qualified', 'Offer'].includes(stage)) return 'bg-emerald-500 ring-emerald-200';
+        if (['Disqualified'].includes(stage)) return 'bg-rose-500 ring-rose-200';
+        return 'bg-slate-300 ring-slate-200';
+    };
+
+    // Refs
     const autosaveTimerRef = React.useRef(null);
     const initialRenderRef = React.useRef(true);
     const onSaveRef = React.useRef(onSave);
-    useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
     const detailsRef = React.useRef(details);
     const historyRef = React.useRef(history);
     const companyRef = React.useRef(companyData);
 
+    // --- NEW: Track where clicks start to prevent accidental closing ---
+    const clickTracker = React.useRef(null);
+
+    useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
     useEffect(() => { detailsRef.current = details; }, [details]);
     useEffect(() => { historyRef.current = history; }, [history]);
     useEffect(() => { companyRef.current = companyData; }, [companyData]);
 
-    // 3. CONVERT BOOLEANS BACK TO STRINGS ON SAVE
+    // Autosave Effect
     useEffect(() => {
         if (initialRenderRef.current) { initialRenderRef.current = false; return; }
         if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
@@ -62,7 +76,7 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
         autosaveTimerRef.current = setTimeout(() => {
             setSaveState('saving');
 
-            // Prepare data for App.jsx format
+            // Prepare payload (Convert Booleans back to Strings)
             const payload = {
                 ...details,
                 Beta: details.Beta ? 'true' : 'false',
@@ -77,7 +91,7 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
         return () => clearTimeout(autosaveTimerRef.current);
     }, [details, companyData, history]);
 
-    // Cleanup Save
+    // Cleanup Save on Unmount
     useEffect(() => {
         return () => {
             if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
@@ -93,6 +107,7 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
         };
     }, []);
 
+    // Handlers
     const handleSendMessage = () => {
         if (!newMessage.trim()) return;
         const newEntry = { date: logDate.toISOString(), type: messageType, content: newMessage };
@@ -126,21 +141,30 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
     const cancelEdit = () => setEditingIndex(null);
     const saveEdit = () => { if (editingIndex === null) return; const updated = { date: editDraft.date.toISOString(), type: editDraft.type, content: editDraft.content }; const next = history.map((h, i) => (i === editingIndex ? updated : h)).sort((a, b) => new Date(b.date) - new Date(a.date)); setHistory(next); setEditingIndex(null); };
 
-    const getStageColor = (s) => {
-        const stage = normalizeStage(s);
-        if (['Won', 'Connected', 'Qualified', 'Offer'].includes(stage)) return 'bg-emerald-500 ring-emerald-200';
-        if (['Disqualified'].includes(stage)) return 'bg-rose-500 ring-rose-200';
-        return 'bg-slate-300 ring-slate-200';
-    };
-
+    // Styles
     const ghostInputTitle = "w-full bg-transparent border-none p-0 focus:ring-0 focus:outline-none placeholder:text-slate-300 font-bold text-slate-800 text-lg mb-0.5";
     const ghostInputSubtitle = "w-full bg-transparent border-none p-0 focus:ring-0 focus:outline-none placeholder:text-slate-300 text-sm text-slate-500 font-medium";
     const labelStyle = "text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 block";
     const ghostInputMeta = "w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-500 focus:outline-none transition-colors text-sm text-slate-700 py-0.5 placeholder:text-slate-300";
 
     return (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[80]" onClick={onClose}>
-            <div className="bg-white w-[1100px] h-[85vh] rounded-2xl shadow-2xl flex overflow-hidden ring-1 ring-slate-900/5" onClick={e => e.stopPropagation()}>
+        <div
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[80]"
+            onMouseDown={(e) => { clickTracker.current = e.target; }}
+            onClick={(e) => {
+                // Only close if the click started AND ended on the backdrop
+                if (e.target === e.currentTarget && clickTracker.current === e.currentTarget) {
+                    onClose();
+                }
+            }}
+        >
+            <div
+                className="bg-white w-[1100px] h-[85vh] rounded-2xl shadow-2xl flex overflow-hidden ring-1 ring-slate-900/5"
+                // Removed stopPropagation here as the check above is smarter
+                onClick={e => {
+                    // Just to be safe regarding bubbling, but strictly not needed with the logic above
+                }}
+            >
                 {/* COL 1: LEAD DETAILS */}
                 <div className="w-80 bg-slate-50/50 border-r border-slate-200 flex flex-col overflow-y-auto">
                     <div className="p-6 pb-6 relative group/leftcol">
@@ -173,7 +197,6 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
                     </div>
 
                     <div className="px-6 py-4 pb-6 space-y-5 border-t border-slate-200 mt-auto bg-white">
-                        {/* 4. TOGGLES - THESE NOW WORK BECAUSE STATE IS REAL BOOLEAN */}
                         <div>
                             <label className={labelStyle}>Program Status</label>
                             <div className="flex gap-2 pt-1">

@@ -4,7 +4,7 @@ import {
     DndContext, useDraggable, useDroppable, DragOverlay, closestCorners,
     useSensor, useSensors, MouseSensor, TouchSensor
 } from '@dnd-kit/core';
-import { ChevronDown, ChevronLeft, Check, Building2, HelpCircle, CheckCircle2, ArrowRight, CalendarClock } from 'lucide-react';
+import { ChevronDown, ChevronLeft, Check, Building2, HelpCircle, CheckCircle2, ArrowRight, CalendarClock, Square, CheckSquare, Mail } from 'lucide-react';
 import {
     STAGE_DEFINITIONS, ORDERED_STAGES, SORT_STRATEGIES,
     StatusBadge, EnterpriseMark, OwnerAvatar,
@@ -12,7 +12,7 @@ import {
 } from '../lib/utils';
 
 // --- INTERNAL COMPONENT: LeadCardUI ---
-export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, listeners, attributes, isOverlay, duplicatesSet, showOwnerAvatar }, ref) => {
+export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, listeners, attributes, isOverlay, duplicatesSet, showOwnerAvatar, mailMergeMode, isSelected, onToggleSelect }, ref) => {
     const stage = normalizeStage(lead.Stage);
     const daysSince = lead.calculatedDays || 0;
     const isDueToday = isDue(lead['Next Date']);
@@ -42,12 +42,16 @@ export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, list
 
     return (
         <div
-            ref={ref} style={style} {...listeners} {...attributes}
-            onClick={() => !isOverlay && onOpen(lead)}
-            // RESTORED: Standard 1px indigo hover border
+            ref={ref} style={style} {...(mailMergeMode ? {} : listeners)} {...(mailMergeMode ? {} : attributes)}
+            onClick={() => {
+                if (isOverlay) return;
+                if (mailMergeMode) { onToggleSelect?.(lead.id); return; }
+                onOpen(lead);
+            }}
             className={`
-        bg-white p-4 mb-3 rounded-xl shadow-sm border border-slate-200 
-        cursor-grab hover:shadow-md hover:border-indigo-300 transition-all duration-200 group relative overflow-hidden
+        bg-white p-4 mb-3 rounded-xl shadow-sm border transition-all duration-200 group relative overflow-hidden
+        ${mailMergeMode ? 'cursor-pointer' : 'cursor-grab'}
+        ${isSelected ? 'border-indigo-400 ring-2 ring-indigo-200 bg-indigo-50/30' : 'border-slate-200 hover:shadow-md hover:border-indigo-300'}
         ${isOverlay ? 'shadow-2xl scale-105 rotate-1 z-50 ring-2 ring-indigo-500' : ''}
       `}
         >
@@ -73,6 +77,11 @@ export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, list
 
             {/* --- HEADER: COMPANY INFO --- */}
             <div className="flex items-center h-6 gap-1.5 mb-2 overflow-hidden ">
+                {mailMergeMode && (
+                    <span className={`shrink-0 ${isSelected ? 'text-indigo-600' : 'text-slate-300'}`}>
+                        {isSelected ? <CheckSquare size={14} /> : <Square size={14} />}
+                    </span>
+                )}
                 <span className="text-[10px] font-bold uppercase tracking-wider truncate text-slate-600">
                     {lead.Company}
                 </span>
@@ -105,14 +114,15 @@ export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, list
 
 const DraggableLeadCard = (props) => {
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-        id: props.lead.id, data: { ...props.lead, company: props.company }
+        id: props.lead.id, data: { ...props.lead, company: props.company },
+        disabled: props.mailMergeMode
     });
     const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, opacity: isDragging ? 0 : 1 } : undefined;
     return <LeadCardUI ref={setNodeRef} style={style} listeners={listeners} attributes={attributes} {...props} />;
 };
 
 // --- INTERNAL COMPONENT: Column ---
-const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusToggle, isFocused, currentSort, onChangeSort, showOwnerAvatar, collapseMulti, onToggleCollapse, scrollPos, onScrollPosChange, isMinimized, onToggleMinimize }) => {
+const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusToggle, isFocused, currentSort, onChangeSort, showOwnerAvatar, collapseMulti, onToggleCollapse, scrollPos, onScrollPosChange, isMinimized, onToggleMinimize, mailMergeMode, selectedIds, onToggleSelect, onSelectAllColumn }) => {
     const { setNodeRef, isOver } = useDroppable({ id });
     const [menuOpen, setMenuOpen] = useState(false);
     const [guideOpen, setGuideOpen] = useState(false);
@@ -239,6 +249,21 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
                     </div>
                 )}
 
+                {/* Mail Merge: Select All */}
+                {mailMergeMode && leads.length > 0 && (
+                    <button
+                        onClick={() => onSelectAllColumn(id, leads.map(l => l.id))}
+                        className={`w-7 h-7 flex items-center justify-center rounded-md transition-all duration-200 shrink-0 ${
+                            leads.every(l => selectedIds.has(l.id))
+                                ? 'text-indigo-600 bg-indigo-100'
+                                : 'text-slate-300 hover:text-indigo-500 hover:bg-indigo-50'
+                        }`}
+                        title={leads.every(l => selectedIds.has(l.id)) ? 'Deselect all' : 'Select all in column'}
+                    >
+                        {leads.every(l => selectedIds.has(l.id)) ? <CheckSquare size={16} /> : <Square size={16} />}
+                    </button>
+                )}
+
                 {/* Left Side: Title & Info Trigger */}
                 <div
                     className="flex items-center gap-2 cursor-pointer relative z-10"
@@ -323,7 +348,7 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
                     sortedLeads.map(lead => {
                         return (
                             <div key={lead.id} className="relative group/card">
-                                <DraggableLeadCard lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} />
+                                <DraggableLeadCard lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} mailMergeMode={mailMergeMode} isSelected={selectedIds?.has(lead.id)} onToggleSelect={onToggleSelect} />
                             </div>
                         );
                     })
@@ -335,7 +360,7 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
                             const lead = group.items[0];
                             return (
                                 <div key={lead.id} className="relative group/card">
-                                    <DraggableLeadCard lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} />
+                                    <DraggableLeadCard lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} mailMergeMode={mailMergeMode} isSelected={selectedIds?.has(lead.id)} onToggleSelect={onToggleSelect} />
                                 </div>
                             );
                         }
@@ -374,7 +399,7 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
                                 {expanded && (
                                     <div className="mt-2 ml-4 pl-3 border-l-2 border-indigo-100 animate-in fade-in slide-in-from-top-1 duration-200">
                                         {group.items.map(lead => (
-                                            <DraggableLeadCard key={lead.id} lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} />
+                                            <DraggableLeadCard key={lead.id} lead={lead} company={companies[lead.Company]} onOpen={onOpen} duplicatesSet={duplicatesSet} showOwnerAvatar={showOwnerAvatar} mailMergeMode={mailMergeMode} isSelected={selectedIds?.has(lead.id)} onToggleSelect={onToggleSelect} />
                                         ))}
                                     </div>
                                 )}
@@ -396,7 +421,8 @@ export const PipelineBoard = ({
     columnSorts, setColumnSorts,
     columnCollapse, setColumnCollapse,
     columnScroll, setColumnScroll,
-    minimizedStages, setMinimizedStages
+    minimizedStages, setMinimizedStages,
+    mailMergeMode, selectedIds, onToggleSelect, onSelectAllColumn
 }) => {
     const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: 5 } }), useSensor(TouchSensor));
 
@@ -430,6 +456,7 @@ export const PipelineBoard = ({
                             showOwnerAvatar={ownerFilter === ''} collapseMulti={!!columnCollapse[stage]} onToggleCollapse={(s) => setColumnCollapse(p => ({ ...p, [s]: !p[s] }))}
                             scrollPos={columnScroll[stage]} onScrollPosChange={(s, pos) => setColumnScroll(p => ({ ...p, [s]: pos }))}
                             isMinimized={!!minimizedStages[stage]} onToggleMinimize={() => setMinimizedStages(prev => ({ ...prev, [stage]: !prev[stage] }))}
+                            mailMergeMode={mailMergeMode} selectedIds={selectedIds} onToggleSelect={onToggleSelect} onSelectAllColumn={onSelectAllColumn}
                         />
                     ))}
                 </div>

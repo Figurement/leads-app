@@ -253,11 +253,10 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
                 {mailMergeMode && leads.length > 0 && (
                     <button
                         onClick={() => onSelectAllColumn(id, leads.map(l => l.id))}
-                        className={`w-7 h-7 flex items-center justify-center rounded-md transition-all duration-200 shrink-0 ${
-                            leads.every(l => selectedIds.has(l.id))
+                        className={`w-7 h-7 flex items-center justify-center rounded-md transition-all duration-200 shrink-0 ${leads.every(l => selectedIds.has(l.id))
                                 ? 'text-indigo-600 bg-indigo-100'
                                 : 'text-slate-300 hover:text-indigo-500 hover:bg-indigo-50'
-                        }`}
+                            }`}
                         title={leads.every(l => selectedIds.has(l.id)) ? 'Deselect all' : 'Select all in column'}
                     >
                         {leads.every(l => selectedIds.has(l.id)) ? <CheckSquare size={16} /> : <Square size={16} />}
@@ -429,7 +428,29 @@ export const PipelineBoard = ({
     const processedLeads = useMemo(() => {
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
-            return leads.filter(l => l.Name.toLowerCase().includes(q) || l.Company.toLowerCase().includes(q) || (l.Email && l.Email.toLowerCase().includes(q)));
+            return leads.filter(l => {
+                let historyText = '';
+                if (Array.isArray(l.History)) {
+                    historyText = l.History.map(entry => entry?.content || '').join(' ').toLowerCase();
+                } else if (typeof l.History === 'string' && l.History.trim()) {
+                    try {
+                        const parsedHistory = JSON.parse(l.History);
+                        historyText = Array.isArray(parsedHistory)
+                            ? parsedHistory.map(entry => entry?.content || '').join(' ').toLowerCase()
+                            : l.History.toLowerCase();
+                    } catch {
+                        historyText = l.History.toLowerCase();
+                    }
+                }
+
+                return (
+                    (l.Name || '').toLowerCase().includes(q) ||
+                    (l.Company || '').toLowerCase().includes(q) ||
+                    (l.Email || '').toLowerCase().includes(q) ||
+                    (l.Notes || '').toLowerCase().includes(q) ||
+                    historyText.includes(q)
+                );
+            });
         }
         return leads.filter(l => {
             if (ownerFilter && (l.Owner || 'Unassigned') !== ownerFilter) return false;

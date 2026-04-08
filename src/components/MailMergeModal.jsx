@@ -6,6 +6,18 @@ const parseEmails = (emailStr) => {
   return emailStr.split(',').map(e => e.trim()).filter(Boolean);
 };
 
+const parseName = (fullName) => {
+  if (!fullName) return { first: '', last: '' };
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) {
+    return { first: parts[0], last: '' };
+  }
+  return {
+    first: parts.slice(0, -1).join(' '),
+    last: parts[parts.length - 1]
+  };
+};
+
 export const MailMergeModal = ({ selectedLeads, companies, onClose, onLogOutreach, onRemoveLead }) => {
   const [campaignName, setCampaignName] = useState('');
   const [copied, setCopied] = useState(false);
@@ -23,10 +35,13 @@ export const MailMergeModal = ({ selectedLeads, companies, onClose, onLogOutreac
   };
 
   const handleCopyTSV = () => {
-    const headers = ['Email', 'Name', 'Title', 'Company', 'City', 'Country'];
-    const rows = withEmail.map(l => [
-      getChosenEmail(l), l.Name || '', l.Title || '', l.Company || '', l.City || '', l.Country || ''
-    ]);
+    const headers = ['Email', 'First Name', 'Last Name', 'Title', 'Company', 'City', 'Country'];
+    const rows = withEmail.map(l => {
+      const { first, last } = parseName(l.Name);
+      return [
+        getChosenEmail(l), first, last, l.Title || '', l.Company || '', l.City || '', l.Country || ''
+      ];
+    });
     const tsv = [headers.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
     navigator.clipboard.writeText(tsv);
     setCopied(true);
@@ -34,15 +49,19 @@ export const MailMergeModal = ({ selectedLeads, companies, onClose, onLogOutreac
   };
 
   const handleDownloadCSV = () => {
-    const headers = ['Email', 'Name', 'Title', 'Company', 'City', 'Country'];
-    const rows = withEmail.map(l => [
-      getChosenEmail(l),
-      l.Name || '',
-      l.Title || '',
-      l.Company || '',
-      l.City || '',
-      l.Country || ''
-    ]);
+    const headers = ['Email', 'First Name', 'Last Name', 'Title', 'Company', 'City', 'Country'];
+    const rows = withEmail.map(l => {
+      const { first, last } = parseName(l.Name);
+      return [
+        getChosenEmail(l),
+        first,
+        last,
+        l.Title || '',
+        l.Company || '',
+        l.City || '',
+        l.Country || ''
+      ];
+    });
 
     const escape = (val) => {
       const s = String(val);

@@ -168,6 +168,127 @@ export default function App() {
       const history = hasInitialNote ? [{ date: now.toISOString(), type: 'note', content: data.Notes }] : [];
       const newLead = { ...data, History: history.length ? JSON.stringify(history) : '', Notes: hasInitialNote ? '' : (data.Notes || ''), Stage: 'New', calculatedDays: 0, id: generateId(data.Name), Beta: 'false', Trial: 'false', Owner: data.Owner || '' };
       saveLeadsToGithub([newLead, ...leads]); setDetailLead(newLead);
+    } else if (type === 'bulkLeads') {
+      const mode = data?.mode === 'insert' ? 'insert' : 'upsert';
+      const rows = Array.isArray(data?.rows) ? data.rows : [];
+      const defaultStage = normalizeStage(data?.defaultStage || 'New') || 'New';
+      const defaultOwner = (data?.defaultOwner || '').trim();
+      const nowIso = new Date().toISOString();
+
+      const byId = new Map(leads.map(l => [String(l.id || '').trim(), l]).filter(([k]) => k));
+      const byEmail = new Map(leads.map(l => [String(l.Email || '').trim().toLowerCase(), l]).filter(([k]) => k));
+      const byLinkedIn = new Map(leads.map(l => [String(l.LinkedIn || '').trim().toLowerCase(), l]).filter(([k]) => k));
+      const byNameCompany = new Map(leads.map(l => [`${String(l.Name || '').trim().toLowerCase()}|${String(l.Company || '').trim().toLowerCase()}`, l]).filter(([k]) => k !== '|'));
+
+      const parseHistory = (value) => {
+        if (!value) return [];
+        if (Array.isArray(value)) return value;
+        if (typeof value === 'string') {
+          try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        }
+        return [];
+      };
+
+      const withNotesInHistory = (existingHistory, notesText) => {
+        if (!notesText) return existingHistory;
+        return [...existingHistory, { date: nowIso, type: 'note', content: notesText }];
+      };
+
+      const cleanRow = (row) => {
+        const out = {};
+        Object.keys(row || {}).forEach(k => {
+          const value = row[k];
+          out[k] = typeof value === 'string' ? value.trim() : value;
+        });
+        return out;
+      };
+
+      const mergedLeads = [...leads];
+      let inserted = 0;
+      let updated = 0;
+      let skipped = 0;
+
+      rows.forEach(raw => {
+        const row = cleanRow(raw);
+        const name = row.Name || '';
+        const company = row.Company || '';
+        const notes = row.Notes || '';
+
+        if (!name || !company) { skipped += 1; return; }
+
+        const idKey = String(row.id || row.ID || '').trim();
+        const emailKey = String(row.Email || '').trim().toLowerCase();
+        const linkedinKey = String(row.LinkedIn || '').trim().toLowerCase();
+        const nameCompanyKey = `${name.toLowerCase()}|${company.toLowerCase()}`;
+
+        let matched = null;
+        if (mode === 'upsert') {
+          matched = (idKey && byId.get(idKey)) || (emailKey && byEmail.get(emailKey)) || (linkedinKey && byLinkedIn.get(linkedinKey)) || byNameCompany.get(nameCompanyKey) || null;
+        }
+
+        if (matched) {
+          const existingHistory = parseHistory(matched.History);
+          const nextHistory = withNotesInHistory(existingHistory, notes);
+          const patch = {
+            Name: name,
+            Company: company,
+            Title: row.Title || matched.Title || '',
+            Email: row.Email || matched.Email || '',
+            Phone: row.Phone || matched.Phone || '',
+            LinkedIn: row.LinkedIn || matched.LinkedIn || '',
+            City: row.City || matched.City || '',
+            Country: row.Country || matched.Country || '',
+            Owner: row.Owner || matched.Owner || defaultOwner || '',
+            Stage: normalizeStage(row.Stage || matched.Stage || defaultStage),
+            History: JSON.stringify(nextHistory),
+            Notes: '',
+            calculatedDays: getDaysSinceInteraction(JSON.stringify(nextHistory)) ?? 0
+          };
+          const idx = mergedLeads.findIndex(l => l.id === matched.id);
+          if (idx !== -1) {
+            mergedLeads[idx] = { ...mergedLeads[idx], ...patch };
+            updated += 1;
+          } else {
+            skipped += 1;
+          }
+          return;
+        }
+
+        const initialHistory = notes ? [{ date: nowIso, type: 'note', content: notes }] : [];
+        const newLead = {
+          id: generateId(name),
+          Name: name,
+          Title: row.Title || '',
+          Company: company,
+          Email: row.Email || '',
+          Phone: row.Phone || '',
+          LinkedIn: row.LinkedIn || '',
+          City: row.City || '',
+          Country: row.Country || '',
+          Stage: normalizeStage(row.Stage || defaultStage),
+          Owner: row.Owner || defaultOwner || '',
+          Beta: toBool(row.Beta) ? 'true' : 'false',
+          Trial: toBool(row.Trial) ? 'true' : 'false',
+          History: initialHistory.length ? JSON.stringify(initialHistory) : '',
+          Notes: initialHistory.length ? '' : notes,
+          calculatedDays: initialHistory.length ? 0 : 0
+        };
+        mergedLeads.unshift(newLead);
+        inserted += 1;
+      });
+
+      if (inserted === 0 && updated === 0) {
+        notifyToast('error', `No rows imported. ${skipped} row${skipped === 1 ? '' : 's'} skipped.`);
+        return;
+      }
+
+      saveLeadsToGithub(mergedLeads);
+      notifyToast('success', `Bulk save complete: ${inserted} added, ${updated} updated, ${skipped} skipped`);
     } else saveCompaniesToGithub({ ...companies, [data.Company]: data });
     setShowAddModal(false);
   };

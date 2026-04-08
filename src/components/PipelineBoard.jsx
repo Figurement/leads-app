@@ -254,8 +254,8 @@ const Column = ({ id, title, leads, companies, onOpen, duplicatesSet, onFocusTog
                     <button
                         onClick={() => onSelectAllColumn(id, leads.map(l => l.id))}
                         className={`w-7 h-7 flex items-center justify-center rounded-md transition-all duration-200 shrink-0 ${leads.every(l => selectedIds.has(l.id))
-                                ? 'text-indigo-600 bg-indigo-100'
-                                : 'text-slate-300 hover:text-indigo-500 hover:bg-indigo-50'
+                            ? 'text-indigo-600 bg-indigo-100'
+                            : 'text-slate-300 hover:text-indigo-500 hover:bg-indigo-50'
                             }`}
                         title={leads.every(l => selectedIds.has(l.id)) ? 'Deselect all' : 'Select all in column'}
                     >
@@ -427,19 +427,43 @@ export const PipelineBoard = ({
 
     const processedLeads = useMemo(() => {
         if (searchQuery) {
-            const q = searchQuery.toLowerCase();
+            const q = searchQuery.trim().toLowerCase();
+            if (!q) return leads;
             return leads.filter(l => {
+                const collectText = (value) => {
+                    if (value == null) return '';
+                    if (typeof value === 'string') return value;
+                    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+                    if (Array.isArray(value)) return value.map(collectText).join(' ');
+                    if (typeof value === 'object') {
+                        const preferred = [value.content, value.note, value.notes, value.text, value.message, value.body]
+                            .map(collectText)
+                            .join(' ')
+                            .trim();
+                        if (preferred) return preferred;
+                        return Object.values(value).map(collectText).join(' ');
+                    }
+                    return '';
+                };
+
                 let historyText = '';
                 if (Array.isArray(l.History)) {
-                    historyText = l.History.map(entry => entry?.content || '').join(' ').toLowerCase();
+                    historyText = collectText(l.History).toLowerCase();
                 } else if (typeof l.History === 'string' && l.History.trim()) {
+                    const rawHistory = l.History.trim();
                     try {
-                        const parsedHistory = JSON.parse(l.History);
-                        historyText = Array.isArray(parsedHistory)
-                            ? parsedHistory.map(entry => entry?.content || '').join(' ').toLowerCase()
-                            : l.History.toLowerCase();
+                        const parsedHistory = JSON.parse(rawHistory);
+                        if (typeof parsedHistory === 'string') {
+                            try {
+                                historyText = collectText(JSON.parse(parsedHistory)).toLowerCase();
+                            } catch {
+                                historyText = parsedHistory.toLowerCase();
+                            }
+                        } else {
+                            historyText = collectText(parsedHistory).toLowerCase();
+                        }
                     } catch {
-                        historyText = l.History.toLowerCase();
+                        historyText = rawHistory.toLowerCase();
                     }
                 }
 

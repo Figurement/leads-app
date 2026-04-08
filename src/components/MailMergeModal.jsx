@@ -13,8 +13,8 @@ const parseName = (fullName) => {
     return { first: parts[0], last: '' };
   }
   return {
-    first: parts.slice(0, -1).join(' '),
-    last: parts[parts.length - 1]
+    first: parts[0], // First word is the first name
+    last: parts.slice(1).join(' ') // Everything else is the last name
   };
 };
 

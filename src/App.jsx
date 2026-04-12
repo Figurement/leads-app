@@ -7,7 +7,9 @@ import {
   CheckCircle2, AlertCircle, Trophy, Filter,
   Users,
   LayoutGrid,
-  List
+  List,
+  Link,
+  Table2
 } from 'lucide-react';
 
 import { fetchCSV, saveCSV } from './lib/github';
@@ -15,9 +17,10 @@ import { useGemini } from './hooks/useGemini';
 import { DailySummaryModal } from './components/DailySummaryModal';
 import { PipelineBoard } from './components/PipelineBoard';
 import { CompanyManager } from './components/CompanyManager';
+import { LeadsTableView } from './components/LeadsTableView';
 
 // --- IMPORTS ---
-import { REPO_OWNER, REPO_NAME, LEADS_PATH, COMPANIES_PATH, generateId, normalizeStage, toBool, getDaysSinceInteraction, DEFAULT_SORTS, DEFAULT_COLLAPSE } from './lib/utils';
+import { REPO_OWNER, REPO_NAME, LEADS_PATH, COMPANIES_PATH, generateId, normalizeStage, toBool, getDaysSinceInteraction, DEFAULT_SORTS, DEFAULT_COLLAPSE, normalizeLinkedInUrl } from './lib/utils';
 import { ModalWrapper } from './components/SharedUI';
 import { AddModal } from './components/AddModal';
 import { CompanyStatusAlert } from './components/CompanyStatusAlert';
@@ -62,7 +65,7 @@ export default function App() {
   const [keys, setKeys] = useState({ github: localStorage.getItem('gh_token') || '', gemini: localStorage.getItem('gemini_key') || '' });
 
   // Global UI State
-  const [viewMode, setViewMode] = useState('pipeline'); // 'pipeline' | 'companies'
+  const [viewMode, setViewMode] = useState('pipeline'); // 'pipeline' | 'companies' | 'table'
   const [searchQuery, setSearchQuery] = useState("");
   const [ownerFilter, setOwnerFilter] = useState(() => localStorage.getItem('ownerFilter') || '');
   const [filters, setFilters] = useState({ due: false, dup: false, beta: false, trial: false, focus: false });
@@ -91,6 +94,7 @@ export default function App() {
   const [mailMergeMode, setMailMergeMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showMailMergeModal, setShowMailMergeModal] = useState(false);
+  const [enrichingNewLeads, setEnrichingNewLeads] = useState(false);
 
   const { askGemini, researchCompany, researchLead, advice, setAdvice, loading: geminiLoading } = useGemini(keys.gemini);
   const toastTimerRef = useRef(null);
@@ -234,13 +238,14 @@ export default function App() {
         if (matched) {
           const existingHistory = parseHistory(matched.History);
           const nextHistory = withNotesInHistory(existingHistory, notes);
+          const normalizedImportedLinkedIn = normalizeLinkedInUrl(row.LinkedIn);
           const patch = {
             Name: name,
             Company: company,
             Title: row.Title || matched.Title || '',
             Email: row.Email || matched.Email || '',
             Phone: row.Phone || matched.Phone || '',
-            LinkedIn: row.LinkedIn || matched.LinkedIn || '',
+            LinkedIn: normalizedImportedLinkedIn || matched.LinkedIn || '',
             City: row.City || matched.City || '',
             Country: row.Country || matched.Country || '',
             Owner: row.Owner || matched.Owner || defaultOwner || '',
@@ -260,6 +265,7 @@ export default function App() {
         }
 
         const initialHistory = notes ? [{ date: nowIso, type: 'note', content: notes }] : [];
+        const normalizedImportedLinkedIn = normalizeLinkedInUrl(row.LinkedIn);
         const newLead = {
           id: generateId(name),
           Name: name,
@@ -267,7 +273,7 @@ export default function App() {
           Company: company,
           Email: row.Email || '',
           Phone: row.Phone || '',
-          LinkedIn: row.LinkedIn || '',
+          LinkedIn: normalizedImportedLinkedIn,
           City: row.City || '',
           Country: row.Country || '',
           Stage: normalizeStage(row.Stage || defaultStage),
@@ -356,6 +362,14 @@ export default function App() {
     saveCompaniesToGithub({ ...companies, [compData.Company]: compData }).then(() => notifyToast('success', 'Company updated'));
   };
 
+  const handleTableSaveAll = async (draftLeads, draftCompanies) => {
+    const saves = [];
+    if (JSON.stringify(draftLeads) !== JSON.stringify(leads)) saves.push(saveLeadsToGithub(draftLeads));
+    if (JSON.stringify(draftCompanies) !== JSON.stringify(companies)) saves.push(saveCompaniesToGithub(draftCompanies));
+    if (!saves.length) return;
+    await Promise.all(saves);
+  };
+
   const handleScoutTask = () => {
     if (!deadEndData) return;
     const taskLead = { id: generateId('Scout'), Name: 'Scout New Contacts', Title: 'Research Task', Company: deadEndData.name, Stage: 'New', Notes: 'Automated task: Previous contacts disqualified. Find new entry point.', History: JSON.stringify([{ date: new Date().toISOString(), type: 'note', content: 'Auto-generated: Company hit a dead end.' }]), calculatedDays: 0, Owner: ownerFilter === 'Unassigned' ? '' : ownerFilter };
@@ -366,6 +380,115 @@ export default function App() {
     if (!deadEndData) return;
     setSearchQuery(deadEndData.name); // Filter the board to this company
     setDeadEndData(null);
+  };
+
+  const handleEnrichNewLeads = async () => {
+    if (enrichingNewLeads) return;
+    const newLeadsWithEmail = leads.filter(l => normalizeStage(l.Stage) === 'New' && String(l.Email || '').trim());
+    if (newLeadsWithEmail.length === 0) {
+      notifyToast('info', 'No New leads with email found');
+      return;
+    }
+
+    setEnrichingNewLeads(true);
+    try {
+      const updatedLeads = [...leads];
+      const updatedCompanies = { ...companies };
+
+      const findLeadIndex = (leadId) => updatedLeads.findIndex(l => l.id === leadId);
+      const companyResearchCache = new Map();
+      const leadResearchCache = new Map();
+
+      let linkedInFilled = 0;
+      let companySizeFilled = 0;
+      let linkedInCleaned = 0;
+
+      for (const lead of newLeadsWithEmail) {
+        const idx = findLeadIndex(lead.id);
+        if (idx === -1) continue;
+
+        const currentLead = updatedLeads[idx];
+        const companyName = String(currentLead.Company || '').trim();
+        if (!companyName) continue;
+
+        const currentCompany = updatedCompanies[companyName] || { Company: companyName };
+
+        const normalizedExistingLinkedIn = normalizeLinkedInUrl(currentLead.LinkedIn);
+        const rawExistingLinkedIn = String(currentLead.LinkedIn || '').trim();
+        if (rawExistingLinkedIn !== normalizedExistingLinkedIn) {
+          updatedLeads[idx] = { ...updatedLeads[idx], LinkedIn: normalizedExistingLinkedIn };
+          if (rawExistingLinkedIn) linkedInCleaned += 1;
+        }
+
+        const missingLinkedIn = !normalizedExistingLinkedIn;
+        const missingSize = !Number.isFinite(Number(currentCompany.Employees)) || Number(currentCompany.Employees) <= 0;
+        if (!missingLinkedIn && !missingSize) continue;
+
+        if (missingLinkedIn) {
+          const leadKey = `${String(currentLead.Name || '').trim().toLowerCase()}|${companyName.toLowerCase()}`;
+          if (!leadResearchCache.has(leadKey)) {
+            leadResearchCache.set(leadKey, await researchLead(currentLead.Name, companyName));
+          }
+          const leadIntel = leadResearchCache.get(leadKey) || {};
+          const normalizedLinkedIn = normalizeLinkedInUrl(leadIntel.LinkedIn);
+
+          if (normalizedLinkedIn) {
+            updatedLeads[idx] = {
+              ...updatedLeads[idx],
+              LinkedIn: normalizedLinkedIn,
+              Title: updatedLeads[idx].Title || leadIntel.Title || '',
+              City: updatedLeads[idx].City || leadIntel.City || '',
+              Country: updatedLeads[idx].Country || leadIntel.Country || ''
+            };
+            linkedInFilled += 1;
+          }
+        }
+
+        if (missingSize) {
+          if (!companyResearchCache.has(companyName)) {
+            companyResearchCache.set(companyName, await researchCompany(companyName, currentLead.City || ''));
+          }
+          const companyIntel = companyResearchCache.get(companyName) || {};
+          const employeeDigits = String(companyIntel.Employees || '').replace(/[^0-9]/g, '');
+          const employeeCount = employeeDigits ? Number(employeeDigits) : 0;
+
+          if (employeeCount > 0) {
+            updatedCompanies[companyName] = {
+              ...currentCompany,
+              Company: companyName,
+              Employees: employeeCount,
+              Category: currentCompany.Category || companyIntel.Category || '',
+              Software: currentCompany.Software || companyIntel.Software || '',
+              Url: currentCompany.Url || companyIntel.Url || '',
+              City: currentCompany.City || companyIntel.City || '',
+              Country: currentCompany.Country || companyIntel.Country || ''
+            };
+            companySizeFilled += 1;
+          }
+        }
+      }
+
+      const leadsChanged = JSON.stringify(updatedLeads) !== JSON.stringify(leads);
+      const companiesChanged = JSON.stringify(updatedCompanies) !== JSON.stringify(companies);
+
+      if (!leadsChanged && !companiesChanged) {
+        notifyToast('info', 'No missing LinkedIn or company size found in New leads');
+        return;
+      }
+
+      const saves = [];
+      if (leadsChanged) saves.push(saveLeadsToGithub(updatedLeads));
+      if (companiesChanged) saves.push(saveCompaniesToGithub(updatedCompanies));
+      await Promise.all(saves);
+
+      setColumnSorts(prev => ({ ...prev, New: 'size' }));
+      notifyToast('success', `Enriched New leads: ${linkedInFilled} LinkedIn, ${companySizeFilled} company sizes, ${linkedInCleaned} cleaned`);
+    } catch (e) {
+      console.error(e);
+      notifyToast('error', 'New lead enrichment failed');
+    } finally {
+      setEnrichingNewLeads(false);
+    }
   };
 
   // --- MAIL MERGE HANDLERS ---
@@ -425,6 +548,7 @@ export default function App() {
             {/* VIEW SWITCHER */}
             <div className="flex bg-slate-100 rounded-lg p-1 gap-1">
               <button onClick={() => setViewMode('pipeline')} className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'pipeline' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><LayoutGrid size={14} /> Pipeline</button>
+              <button onClick={() => setViewMode('table')} className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'table' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><Table2 size={14} /> Spreadsheet</button>
               <button onClick={() => setViewMode('companies')} className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'companies' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><List size={14} /> Companies</button>
             </div>
 
@@ -458,6 +582,21 @@ export default function App() {
             <button onClick={() => setShowSummary(true)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors" title="Daily Summary"><Calendar size={20} /></button>
             {viewMode === 'pipeline' && (
               <button
+                onClick={handleEnrichNewLeads}
+                disabled={enrichingNewLeads}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all border ${
+                  enrichingNewLeads
+                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'
+                }`}
+                title="Auto-fill LinkedIn and company size for New leads with email"
+              >
+                {enrichingNewLeads ? <Loader2 size={16} className="animate-spin" /> : <Link size={16} />}
+                <span className="hidden sm:inline">Enrich New</span>
+              </button>
+            )}
+            {viewMode === 'pipeline' && (
+              <button
                 onClick={() => { if (mailMergeMode) { exitMailMergeMode(); } else { setMailMergeMode(true); } }}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all border ${
                   mailMergeMode
@@ -489,6 +628,15 @@ export default function App() {
               onDeleteCompany={handleDeleteCompany}
               onResearchCompany={researchCompany}
               onOpenLead={setDetailLead}
+            />
+          ) : viewMode === 'table' ? (
+            <LeadsTableView
+              leads={leads}
+              companies={companies}
+              owners={uniqueOwners}
+              searchQuery={searchQuery}
+              onSaveAll={handleTableSaveAll}
+              onToast={notifyToast}
             />
           ) : (
             <PipelineBoard

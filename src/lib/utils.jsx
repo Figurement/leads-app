@@ -23,7 +23,7 @@ export const SORT_STRATEGIES = {
 };
 
 export const DEFAULT_SORTS = {
-  'New': 'momentum', 'Attempting': 'revival', 'Connected': 'momentum',
+  'New': 'size', 'Attempting': 'revival', 'Connected': 'momentum',
   'Qualified': 'size', 'Offer': 'size', 'Nurture': 'revival',
   'Disqualified': 'revival', 'Won': 'size'
 };
@@ -65,6 +65,38 @@ export const formatDateStr = (date) => {
 export const toBool = (v) => {
   const s = String(v || '').trim().toLowerCase();
   return s === 'true' || s === '1' || s === 'yes' || s === 'y';
+};
+
+export const normalizeLinkedInUrl = (url) => {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  let parsed;
+  try {
+    parsed = new URL(withProtocol);
+  } catch {
+    return '';
+  }
+
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+  if (host !== 'linkedin.com') return '';
+
+  const path = parsed.pathname.replace(/\/+$/, '');
+  const validProfilePath = /^\/(in|pub)\/[a-z0-9-_%]+$/i.test(path);
+  if (!validProfilePath) return '';
+
+  return `https://www.linkedin.com${path}`;
+};
+
+export const getCompanySizeBand = (employees) => {
+  const count = Number(employees);
+  if (!Number.isFinite(count) || count <= 0) return { key: 'unknown', label: 'Size ?' };
+  if (count < 11) return { key: 'micro', label: 'Micro' };
+  if (count < 51) return { key: 'small', label: 'Small' };
+  if (count < 251) return { key: 'mid', label: 'Mid' };
+  if (count < 1001) return { key: 'large', label: 'Large' };
+  return { key: 'enterprise', label: 'Enterprise' };
 };
 
 export const isDue = (dateStr) => {

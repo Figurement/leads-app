@@ -471,6 +471,7 @@ export const PipelineBoard = ({
                     (l.Name || '').toLowerCase().includes(q) ||
                     (l.Company || '').toLowerCase().includes(q) ||
                     (l.Email || '').toLowerCase().includes(q) ||
+                    (l.PersonalEmail || '').toLowerCase().includes(q) ||
                     (l.Notes || '').toLowerCase().includes(q) ||
                     historyText.includes(q)
                 );

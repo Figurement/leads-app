@@ -179,10 +179,17 @@ export const DetailModal = ({ lead, companies, leads, owners, onClose, onSave, o
                         </div>
                         <div className="space-y-4">
                             <div>
-                                <label className={labelStyle}>Email</label>
+                                <label className={labelStyle}>Work Email</label>
                                 <div className="flex items-center gap-2 group">
                                     <input className={ghostInputMeta} placeholder="email@address.com" value={details.Email} onChange={e => setDetails({ ...details, Email: e.target.value })} />
                                     {details.Email && (<button onClick={() => { navigator.clipboard.writeText(details.Email); }} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-indigo-600 transition-all"><Copy size={12} /></button>)}
+                                </div>
+                            </div>
+                            <div>
+                                <label className={labelStyle}>Personal Email</label>
+                                <div className="flex items-center gap-2 group">
+                                    <input className={ghostInputMeta} placeholder="name@gmail.com" value={details.PersonalEmail || ''} onChange={e => setDetails({ ...details, PersonalEmail: e.target.value })} />
+                                    {details.PersonalEmail && (<button onClick={() => { navigator.clipboard.writeText(details.PersonalEmail); }} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-indigo-600 transition-all"><Copy size={12} /></button>)}
                                 </div>
                             </div>
                             <div><label className={labelStyle}>Phone</label><input className={ghostInputMeta} placeholder="+45 00 00 00 00" value={details.Phone || ''} onChange={e => setDetails({ ...details, Phone: e.target.value })} /></div>

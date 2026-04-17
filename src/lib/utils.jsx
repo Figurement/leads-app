@@ -67,6 +67,40 @@ export const toBool = (v) => {
   return s === 'true' || s === '1' || s === 'yes' || s === 'y';
 };
 
+export const parseEmailList = (value) => {
+  if (!value) return [];
+  return String(value)
+    .split(',')
+    .map(email => email.trim())
+    .filter(Boolean);
+};
+
+export const getLeadEmailOptions = (lead) => {
+  const options = [];
+  const seen = new Set();
+
+  const addEmails = (emails, typeLabel) => {
+    emails.forEach((email, index) => {
+      const key = email.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      options.push({
+        value: email,
+        label: emails.length > 1 ? `${typeLabel} ${index + 1}` : typeLabel
+      });
+    });
+  };
+
+  addEmails(parseEmailList(lead?.Email), 'Work');
+  addEmails(parseEmailList(lead?.PersonalEmail), 'Personal');
+
+  return options;
+};
+
+export const getAllLeadEmails = (lead) => getLeadEmailOptions(lead).map(option => option.value);
+
+export const getPrimaryLeadEmail = (lead) => getAllLeadEmails(lead)[0] || '';
+
 export const isDue = (dateStr) => {
   if (!dateStr) return false;
   const d = parseDateStr(dateStr);

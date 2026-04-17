@@ -1,10 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { X, Download, Copy, CheckCircle2, AlertTriangle, Mail, Trash2, Send, Users, ChevronDown } from 'lucide-react';
-
-const parseEmails = (emailStr) => {
-  if (!emailStr) return [];
-  return emailStr.split(',').map(e => e.trim()).filter(Boolean);
-};
+import { getLeadEmailOptions, getPrimaryLeadEmail } from '../lib/utils';
 
 const parseName = (fullName) => {
   if (!fullName) return { first: '', last: '' };
@@ -25,13 +21,12 @@ export const MailMergeModal = ({ selectedLeads, companies, onClose, onLogOutreac
   // Track chosen email per lead id — defaults built lazily
   const [emailChoices, setEmailChoices] = useState({});
 
-  const withEmail = useMemo(() => selectedLeads.filter(l => l.Email && l.Email.trim()), [selectedLeads]);
-  const withoutEmail = useMemo(() => selectedLeads.filter(l => !l.Email || !l.Email.trim()), [selectedLeads]);
+  const withEmail = useMemo(() => selectedLeads.filter(l => getLeadEmailOptions(l).length > 0), [selectedLeads]);
+  const withoutEmail = useMemo(() => selectedLeads.filter(l => getLeadEmailOptions(l).length === 0), [selectedLeads]);
 
   const getChosenEmail = (lead) => {
     if (emailChoices[lead.id]) return emailChoices[lead.id];
-    const emails = parseEmails(lead.Email);
-    return emails[0] || '';
+    return getPrimaryLeadEmail(lead);
   };
 
   const handleCopyTSV = () => {
@@ -83,7 +78,8 @@ export const MailMergeModal = ({ selectedLeads, companies, onClose, onLogOutreac
 
   const handleLogOutreach = () => {
     if (!campaignName.trim()) return;
-    onLogOutreach(withEmail, campaignName.trim());
+    const selectedEmails = Object.fromEntries(withEmail.map(lead => [lead.id, getChosenEmail(lead)]));
+    onLogOutreach(withEmail, campaignName.trim(), selectedEmails);
     setLogged(true);
   };
 
@@ -131,9 +127,9 @@ export const MailMergeModal = ({ selectedLeads, companies, onClose, onLogOutreac
                 <div className="p-6 text-center text-slate-400 text-sm">No leads with email addresses selected</div>
               ) : (
                 withEmail.map(lead => {
-                  const emails = parseEmails(lead.Email);
+                  const emailOptions = getLeadEmailOptions(lead);
                   const chosen = getChosenEmail(lead);
-                  const hasMultiple = emails.length > 1;
+                  const hasMultiple = emailOptions.length > 1;
                   return (
                     <div key={lead.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-50 last:border-b-0 hover:bg-slate-50 group">
                       <div className="flex-1 min-w-0">
@@ -148,14 +144,14 @@ export const MailMergeModal = ({ selectedLeads, companies, onClose, onLogOutreac
                               onChange={e => setEmailChoices(prev => ({ ...prev, [lead.id]: e.target.value }))}
                               className="w-full text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-md pl-2 pr-6 py-1 outline-none focus:ring-1 focus:ring-indigo-400 appearance-none cursor-pointer"
                             >
-                              {emails.map(email => (
-                                <option key={email} value={email}>{email}</option>
+                              {emailOptions.map(option => (
+                                <option key={`${lead.id}-${option.label}-${option.value}`} value={option.value}>{option.label}: {option.value}</option>
                               ))}
                             </select>
                             <ChevronDown size={12} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           </div>
                         ) : (
-                          <p className="text-xs text-slate-400 truncate">{chosen}</p>
+                          <p className="text-xs text-slate-400 truncate">{emailOptions[0]?.label}: {chosen}</p>
                         )}
                       </div>
                       <button

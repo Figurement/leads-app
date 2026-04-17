@@ -17,7 +17,7 @@ import { PipelineBoard } from './components/PipelineBoard';
 import { CompanyManager } from './components/CompanyManager';
 
 // --- IMPORTS ---
-import { REPO_OWNER, REPO_NAME, LEADS_PATH, COMPANIES_PATH, generateId, normalizeStage, toBool, getDaysSinceInteraction, DEFAULT_SORTS, DEFAULT_COLLAPSE } from './lib/utils';
+import { REPO_OWNER, REPO_NAME, LEADS_PATH, COMPANIES_PATH, generateId, normalizeStage, toBool, getDaysSinceInteraction, DEFAULT_SORTS, DEFAULT_COLLAPSE, getAllLeadEmails } from './lib/utils';
 import { ModalWrapper } from './components/SharedUI';
 import { AddModal } from './components/AddModal';
 import { CompanyStatusAlert } from './components/CompanyStatusAlert';
@@ -99,7 +99,13 @@ export default function App() {
   const uniqueOwners = useMemo(() => [...new Set(leads.map(l => l.Owner).filter(Boolean))].sort(), [leads]);
   const duplicatesSet = useMemo(() => {
     const map = new Map(), dup = new Set();
-    leads.forEach(l => [l.Email, l.LinkedIn, l.Name].forEach(k => { if (!k) return; const key = k.trim().toLowerCase(); if (map.has(key)) { dup.add(l.id); dup.add(map.get(key)); } else map.set(key, l.id); }));
+    leads.forEach(l => {
+      [...getAllLeadEmails(l), l.LinkedIn, l.Name].forEach(k => {
+        if (!k) return;
+        const key = k.trim().toLowerCase();
+        if (map.has(key)) { dup.add(l.id); dup.add(map.get(key)); } else map.set(key, l.id);
+      });
+    });
     return dup;
   }, [leads]);
   const activeLead = activeId ? leads.find(l => l.id === activeId) : null;
@@ -166,7 +172,7 @@ export default function App() {
       const now = new Date();
       const hasInitialNote = (data.Notes || '').trim().length > 0;
       const history = hasInitialNote ? [{ date: now.toISOString(), type: 'note', content: data.Notes }] : [];
-      const newLead = { ...data, History: history.length ? JSON.stringify(history) : '', Notes: hasInitialNote ? '' : (data.Notes || ''), Stage: 'New', calculatedDays: 0, id: generateId(data.Name), Beta: 'false', Trial: 'false', Owner: data.Owner || '' };
+      const newLead = { ...data, Email: data.Email || '', PersonalEmail: data.PersonalEmail || '', History: history.length ? JSON.stringify(history) : '', Notes: hasInitialNote ? '' : (data.Notes || ''), Stage: 'New', calculatedDays: 0, id: generateId(data.Name), Beta: 'false', Trial: 'false', Owner: data.Owner || '' };
       saveLeadsToGithub([newLead, ...leads]); setDetailLead(newLead);
     } else if (type === 'bulkLeads') {
       const mode = data?.mode === 'insert' ? 'insert' : 'upsert';
@@ -176,7 +182,13 @@ export default function App() {
       const nowIso = new Date().toISOString();
 
       const byId = new Map(leads.map(l => [String(l.id || '').trim(), l]).filter(([k]) => k));
-      const byEmail = new Map(leads.map(l => [String(l.Email || '').trim().toLowerCase(), l]).filter(([k]) => k));
+      const byEmail = new Map();
+      leads.forEach(lead => {
+        getAllLeadEmails(lead).forEach(email => {
+          const key = String(email || '').trim().toLowerCase();
+          if (key && !byEmail.has(key)) byEmail.set(key, lead);
+        });
+      });
       const byLinkedIn = new Map(leads.map(l => [String(l.LinkedIn || '').trim().toLowerCase(), l]).filter(([k]) => k));
       const byNameCompany = new Map(leads.map(l => [`${String(l.Name || '').trim().toLowerCase()}|${String(l.Company || '').trim().toLowerCase()}`, l]).filter(([k]) => k !== '|'));
 
@@ -222,13 +234,13 @@ export default function App() {
         if (!name || !company) { skipped += 1; return; }
 
         const idKey = String(row.id || row.ID || '').trim();
-        const emailKey = String(row.Email || '').trim().toLowerCase();
+        const emailKeys = [row.Email, row.PersonalEmail].map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
         const linkedinKey = String(row.LinkedIn || '').trim().toLowerCase();
         const nameCompanyKey = `${name.toLowerCase()}|${company.toLowerCase()}`;
 
         let matched = null;
         if (mode === 'upsert') {
-          matched = (idKey && byId.get(idKey)) || (emailKey && byEmail.get(emailKey)) || (linkedinKey && byLinkedIn.get(linkedinKey)) || byNameCompany.get(nameCompanyKey) || null;
+          matched = (idKey && byId.get(idKey)) || emailKeys.map(key => byEmail.get(key)).find(Boolean) || (linkedinKey && byLinkedIn.get(linkedinKey)) || byNameCompany.get(nameCompanyKey) || null;
         }
 
         if (matched) {
@@ -239,6 +251,7 @@ export default function App() {
             Company: company,
             Title: row.Title || matched.Title || '',
             Email: row.Email || matched.Email || '',
+            PersonalEmail: row.PersonalEmail || matched.PersonalEmail || '',
             Phone: row.Phone || matched.Phone || '',
             LinkedIn: row.LinkedIn || matched.LinkedIn || '',
             City: row.City || matched.City || '',
@@ -266,6 +279,7 @@ export default function App() {
           Title: row.Title || '',
           Company: company,
           Email: row.Email || '',
+          PersonalEmail: row.PersonalEmail || '',
           Phone: row.Phone || '',
           LinkedIn: row.LinkedIn || '',
           City: row.City || '',
@@ -387,12 +401,13 @@ export default function App() {
     });
   };
 
-  const handleMailMergeLogOutreach = (mergeLeads, campaignName) => {
+  const handleMailMergeLogOutreach = (mergeLeads, campaignName, selectedEmails = {}) => {
     const now = new Date().toISOString();
     const updatedLeads = leads.map(lead => {
       if (!mergeLeads.find(ml => ml.id === lead.id)) return lead;
       const history = lead.History ? JSON.parse(lead.History) : [];
-      history.push({ date: now, type: 'user', content: `Mail merge: ${campaignName}` });
+      const chosenEmail = selectedEmails[lead.id];
+      history.push({ date: now, type: 'user', content: chosenEmail ? `Mail merge: ${campaignName} -> ${chosenEmail}` : `Mail merge: ${campaignName}` });
       return { ...lead, History: JSON.stringify(history), calculatedDays: 0 };
     });
     saveLeadsToGithub(updatedLeads);

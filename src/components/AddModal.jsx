@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { Loader2, Sparkles, AlertCircle, X } from 'lucide-react';
 import Papa from 'papaparse';
+import { getAllLeadEmails } from '../lib/utils';
 
-const BULK_COLUMNS = ['Name', 'Title', 'Company', 'Email', 'Phone', 'LinkedIn', 'City', 'Country', 'Owner', 'Stage', 'Notes', 'Beta', 'Trial', 'id'];
-const BULK_FALLBACK_ORDER = ['Name', 'Title', 'Company', 'Email', 'Phone', 'LinkedIn', 'City', 'Country', 'Owner', 'Stage', 'Notes', 'Beta', 'Trial', 'id'];
+const BULK_COLUMNS = ['Name', 'Title', 'Company', 'Email', 'PersonalEmail', 'Phone', 'LinkedIn', 'City', 'Country', 'Owner', 'Stage', 'Notes', 'Beta', 'Trial', 'id'];
+const BULK_FALLBACK_ORDER = ['Name', 'Title', 'Company', 'Email', 'PersonalEmail', 'Phone', 'LinkedIn', 'City', 'Country', 'Owner', 'Stage', 'Notes', 'Beta', 'Trial', 'id'];
 
 const HEADER_ALIASES = {
     name: 'Name',
@@ -14,6 +15,11 @@ const HEADER_ALIASES = {
     company: 'Company',
     organization: 'Company',
     email: 'Email',
+    work_email: 'Email',
+    workemail: 'Email',
+    personal_email: 'PersonalEmail',
+    personalemail: 'PersonalEmail',
+    private_email: 'PersonalEmail',
     phone: 'Phone',
     linkedin: 'LinkedIn',
     linkedin_url: 'LinkedIn',
@@ -48,7 +54,7 @@ const detectDelimiter = (text) => {
 
 export const AddModal = ({ companies, leads, owners, onClose, onSave, onResearchLead, onResearchCompany }) => {
     const [type, setType] = useState('lead');
-    const [formData, setFormData] = useState({ Name: '', Title: '', Company: '', Email: '', Phone: '', LinkedIn: '', Category: '', Employees: '', City: '', Country: '', Url: '', Software: '', Notes: '', Owner: '' });
+    const [formData, setFormData] = useState({ Name: '', Title: '', Company: '', Email: '', PersonalEmail: '', Phone: '', LinkedIn: '', Category: '', Employees: '', City: '', Country: '', Url: '', Software: '', Notes: '', Owner: '' });
     const [loading, setLoading] = useState(false);
     const [bulkText, setBulkText] = useState('');
     const [bulkHasHeader, setBulkHasHeader] = useState(true);
@@ -111,7 +117,7 @@ export const AddModal = ({ companies, leads, owners, onClose, onSave, onResearch
             });
 
         const byId = new Set(leads.map(l => String(l.id || '').trim()).filter(Boolean));
-        const byEmail = new Set(leads.map(l => String(l.Email || '').trim().toLowerCase()).filter(Boolean));
+        const byEmail = new Set(leads.flatMap(l => getAllLeadEmails(l).map(email => String(email || '').trim().toLowerCase()).filter(Boolean)));
         const byLinkedIn = new Set(leads.map(l => String(l.LinkedIn || '').trim().toLowerCase()).filter(Boolean));
         const byNameCompany = new Set(leads.map(l => `${String(l.Name || '').trim().toLowerCase()}|${String(l.Company || '').trim().toLowerCase()}`).filter(k => k !== '|'));
 
@@ -123,12 +129,12 @@ export const AddModal = ({ companies, leads, owners, onClose, onSave, onResearch
             if (!r.Name || !r.Company) return;
             validCount += 1;
             const idKey = String(r.id || '').trim();
-            const emailKey = String(r.Email || '').trim().toLowerCase();
+            const emailKeys = [r.Email, r.PersonalEmail].map(email => String(email || '').trim().toLowerCase()).filter(Boolean);
             const linkedInKey = String(r.LinkedIn || '').trim().toLowerCase();
             const nameCompanyKey = `${String(r.Name || '').trim().toLowerCase()}|${String(r.Company || '').trim().toLowerCase()}`;
             const isExisting = !!(
                 (idKey && byId.has(idKey)) ||
-                (emailKey && byEmail.has(emailKey)) ||
+                emailKeys.some(key => byEmail.has(key)) ||
                 (linkedInKey && byLinkedIn.has(linkedInKey)) ||
                 byNameCompany.has(nameCompanyKey)
             );
@@ -217,7 +223,10 @@ export const AddModal = ({ companies, leads, owners, onClose, onSave, onResearch
                                         <datalist id="owners-list">{owners.map(m => <option key={m} value={m} />)}</datalist>
                                     </div>
                                 </div>
-                                <input placeholder="Email" className="input-clean" value={formData.Email} onChange={e => setFormData({ ...formData, Email: e.target.value })} />
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <input placeholder="Work Email" className="input-clean" value={formData.Email} onChange={e => setFormData({ ...formData, Email: e.target.value })} />
+                                    <input placeholder="Personal Email" className="input-clean" value={formData.PersonalEmail} onChange={e => setFormData({ ...formData, PersonalEmail: e.target.value })} />
+                                </div>
                                 <input placeholder="Phone" className="input-clean" value={formData.Phone} onChange={e => setFormData({ ...formData, Phone: e.target.value })} />
                                 <input placeholder="LinkedIn URL" className="input-clean" value={formData.LinkedIn} onChange={e => setFormData({ ...formData, LinkedIn: e.target.value })} />
                                 <div className="flex gap-2">
@@ -292,7 +301,7 @@ export const AddModal = ({ companies, leads, owners, onClose, onSave, onResearch
                                         <table className="w-full text-xs">
                                             <thead className="bg-white border-b border-slate-100 sticky top-0">
                                                 <tr>
-                                                    {['Name', 'Title', 'Company', 'Email', 'Owner', 'Stage', 'Notes'].map(col => (
+                                                    {['Name', 'Title', 'Company', 'Email', 'PersonalEmail', 'Owner', 'Stage', 'Notes'].map(col => (
                                                         <th key={col} className="text-left px-3 py-2 font-semibold text-slate-500">{col}</th>
                                                     ))}
                                                 </tr>
@@ -304,6 +313,7 @@ export const AddModal = ({ companies, leads, owners, onClose, onSave, onResearch
                                                         <td className="px-3 py-2 text-slate-600">{row.Title}</td>
                                                         <td className="px-3 py-2 text-slate-700">{row.Company}</td>
                                                         <td className="px-3 py-2 text-slate-600">{row.Email}</td>
+                                                        <td className="px-3 py-2 text-slate-600">{row.PersonalEmail}</td>
                                                         <td className="px-3 py-2 text-slate-600">{row.Owner}</td>
                                                         <td className="px-3 py-2 text-slate-600">{row.Stage || bulkDefaultStage}</td>
                                                         <td className="px-3 py-2 text-slate-500 max-w-[220px] truncate">{row.Notes}</td>
@@ -311,7 +321,7 @@ export const AddModal = ({ companies, leads, owners, onClose, onSave, onResearch
                                                 ))}
                                                 {bulkParsed.rows.length === 0 && (
                                                     <tr>
-                                                        <td colSpan={7} className="px-3 py-8 text-center text-slate-400">Paste a spreadsheet range to preview imported rows</td>
+                                                        <td colSpan={8} className="px-3 py-8 text-center text-slate-400">Paste a spreadsheet range to preview imported rows</td>
                                                     </tr>
                                                 )}
                                             </tbody>

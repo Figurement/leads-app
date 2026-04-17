@@ -8,7 +8,7 @@ import { ChevronDown, ChevronLeft, Check, Building2, HelpCircle, CheckCircle2, A
 import {
     STAGE_DEFINITIONS, ORDERED_STAGES, SORT_STRATEGIES,
     StatusBadge, EnterpriseMark, OwnerAvatar,
-    normalizeStage, isDue, toBool
+    normalizeStage, isDue, toBool, getCompanySizeBand
 } from '../lib/utils';
 
 // --- INTERNAL COMPONENT: LeadCardUI ---
@@ -20,6 +20,7 @@ export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, list
     const isActive = (stage === 'Qualified');
     const isDuplicate = duplicatesSet?.has(lead.id);
     const isEnterprise = (typeof company?.Employees === 'number') && company.Employees >= 500;
+    const sizeBand = getCompanySizeBand(company?.Employees);
 
     // Extract Next Action
     const nextActionText = lead['Next Action'];
@@ -85,6 +86,11 @@ export const LeadCardUI = React.forwardRef(({ lead, company, onOpen, style, list
                 <span className="text-[10px] font-bold uppercase tracking-wider truncate text-slate-600">
                     {lead.Company}
                 </span>
+                {sizeBand.key !== 'unknown' && (
+                    <span className="text-[9px] font-semibold text-slate-500 bg-slate-100 px-1 py-[1px] rounded-[3px] shrink-0">
+                        {sizeBand.label}
+                    </span>
+                )}
                 {isEnterprise && (<EnterpriseMark />)}
                 {isDuplicate && <span className="text-[9px] font-bold text-white bg-red-500 px-1 rounded-[3px]">DUP</span>}
                 {headerBadge || (

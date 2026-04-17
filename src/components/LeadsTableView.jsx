@@ -669,7 +669,7 @@ export const LeadsTableView = ({
                 : saveState === 'dirty'
                   ? 'bg-amber-50 text-amber-700'
                   : 'bg-slate-100 text-slate-600'
-          }`}>
+            }`}>
             {saveState === 'saving' ? <Loader2 size={12} className="animate-spin" /> : null}
             {saveState === 'saved' ? <CheckCircle2 size={12} /> : null}
             {saveState === 'error' ? <TriangleAlert size={12} /> : null}

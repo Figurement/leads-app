@@ -687,8 +687,8 @@ export default function App() {
                 onClick={handleEnrichNewLeads}
                 disabled={enrichingNewLeads}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all border ${enrichingNewLeads
-                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'
+                  ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                  : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'
                   }`}
                 title="Auto-fill LinkedIn and company size for New leads with email"
               >
@@ -700,8 +700,8 @@ export default function App() {
               <button
                 onClick={() => { if (mailMergeMode) { exitMailMergeMode(); } else { setMailMergeMode(true); } }}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all border ${mailMergeMode
-                    ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
-                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'
+                  ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
+                  : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'
                   }`}
                 title="Mail Merge Mode"
               >

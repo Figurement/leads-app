@@ -1,8 +1,10 @@
-/* src/lib/utils.js */
+/* src/lib/utils.js — Pure helpers, constants, and stage config.
+ * React UI components (StatusBadge, EnterpriseMark, OwnerAvatar) live in
+ * src/components/SharedUI.jsx — do NOT duplicate them here.
+ */
 import React from 'react';
 import {
-  Clock, Ban, Search, Mail, MessageSquare, Trophy, FileText, Sparkles,
-  BadgeCheck
+  Clock, Ban, Search, Mail, MessageSquare, Trophy, FileText, Sparkles
 } from 'lucide-react';
 
 // --- CONSTANTS ---
@@ -150,32 +152,6 @@ export const getDaysSinceInteraction = (historyStr) => {
   } catch { return null; }
 };
 
-// --- SHARED UI ---
-
-export const StatusBadge = ({ type, label }) => {
-  const base = "leading-none ml-auto flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0";
-  let cls = "";
-  let icon = null;
-  switch (type) {
-    case 'due': cls = "text-rose-600 bg-rose-50 border-rose-100"; icon = <Clock size={10} />; break;
-    case 'stalled': cls = "text-slate-600 bg-slate-100 border-slate-200"; break;
-    case 'active': cls = "text-emerald-600 bg-emerald-50 border-emerald-100"; break;
-    default: cls = "text-slate-600 bg-slate-100 border-slate-200";
-  }
-  return <div className={`${base} ${cls}`}>{icon}{label}</div>;
-};
-
-export const EnterpriseMark = () => (
-  <BadgeCheck size={10} className="text-indigo-500 shrink-0" fill="#e0e7ff" aria-label="Enterprise Verified" />
-);
-
-export const OwnerAvatar = ({ name, size = "w-5 h-5", textSize = "text-[9px]" }) => {
-  const safeName = name || 'Unassigned';
-  const initial = safeName === 'Unassigned' ? '?' : safeName.charAt(0).toUpperCase();
-  const style = safeName === 'Unassigned' ? 'bg-slate-50 text-slate-300 border-dashed border-slate-300' : 'bg-indigo-50 text-indigo-600 border-indigo-200';
-  return (
-    <div className={`${size} ${textSize} rounded-full border flex items-center justify-center font-bold shadow-sm shrink-0 ${style}`}>
-      {initial}
-    </div>
-  );
-};
+// StatusBadge, EnterpriseMark, OwnerAvatar → import from src/components/SharedUI.jsx
+// Re-exported here for backward compatibility with existing imports.
+export { StatusBadge, EnterpriseMark, OwnerAvatar } from '../components/SharedUI';

@@ -2,39 +2,10 @@ import React, { useState, useMemo } from 'react';
 import { Loader2, Sparkles, AlertCircle, X } from 'lucide-react';
 import Papa from 'papaparse';
 import { getAllLeadEmails } from '../lib/utils';
+import { LEAD_CSV_COLUMNS, LEAD_BULK_FALLBACK_ORDER, HEADER_ALIASES } from '../lib/schema';
 
-const BULK_COLUMNS = ['Name', 'Title', 'Company', 'Email', 'PersonalEmail', 'Phone', 'LinkedIn', 'City', 'Country', 'Owner', 'Stage', 'Notes', 'Beta', 'Trial', 'id'];
-const BULK_FALLBACK_ORDER = ['Name', 'Title', 'Company', 'Email', 'PersonalEmail', 'Phone', 'LinkedIn', 'City', 'Country', 'Owner', 'Stage', 'Notes', 'Beta', 'Trial', 'id'];
-
-const HEADER_ALIASES = {
-    name: 'Name',
-    full_name: 'Name',
-    fullname: 'Name',
-    title: 'Title',
-    role: 'Title',
-    company: 'Company',
-    organization: 'Company',
-    email: 'Email',
-    work_email: 'Email',
-    workemail: 'Email',
-    personal_email: 'PersonalEmail',
-    personalemail: 'PersonalEmail',
-    private_email: 'PersonalEmail',
-    phone: 'Phone',
-    linkedin: 'LinkedIn',
-    linkedin_url: 'LinkedIn',
-    city: 'City',
-    country: 'Country',
-    owner: 'Owner',
-    stage: 'Stage',
-    notes: 'Notes',
-    note: 'Notes',
-    comments: 'Notes',
-    comment: 'Notes',
-    beta: 'Beta',
-    trial: 'Trial',
-    id: 'id'
-};
+const BULK_COLUMNS = LEAD_CSV_COLUMNS;
+const BULK_FALLBACK_ORDER = LEAD_BULK_FALLBACK_ORDER;
 
 const normalizeHeader = (header) => {
     const key = String(header || '').trim().toLowerCase().replace(/\s+/g, '_');

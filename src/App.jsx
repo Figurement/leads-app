@@ -21,6 +21,7 @@ import { LeadsTableView } from './components/LeadsTableView';
 
 // --- IMPORTS ---
 import { REPO_OWNER, REPO_NAME, LEADS_PATH, COMPANIES_PATH, generateId, normalizeStage, toBool, getDaysSinceInteraction, DEFAULT_SORTS, DEFAULT_COLLAPSE, getAllLeadEmails, normalizeLinkedInUrl } from './lib/utils';
+import { LEAD_CSV_COLUMNS, COMPANY_FIELDS } from './lib/schema';
 import { ModalWrapper } from './components/SharedUI';
 import { AddModal } from './components/AddModal';
 import { CompanyStatusAlert } from './components/CompanyStatusAlert';
@@ -137,8 +138,94 @@ export default function App() {
     }).catch(e => { console.error(e); alert("Error loading data"); }).finally(() => setLoading(false));
   }, [keys.github]);
 
-  const saveLeadsToGithub = (newLeads) => { setLeads(newLeads); return saveCSV(keys.github, REPO_OWNER, REPO_NAME, LEADS_PATH, newLeads, sha.leads).then(r => setSha(p => ({ ...p, leads: r.content.sha }))).catch(() => alert("Save failed")); };
-  const saveCompaniesToGithub = (newComp) => { setCompanies(newComp); return saveCSV(keys.github, REPO_OWNER, REPO_NAME, COMPANIES_PATH, Object.values(newComp), sha.companies).then(r => setSha(p => ({ ...p, companies: r.content.sha }))); };
+  const hydrateLeadForState = (lead) => {
+    const normStage = normalizeStage(lead.Stage);
+    const rawDays = getDaysSinceInteraction(lead.History);
+    let finalDays = 999;
+    if (rawDays !== null) finalDays = rawDays;
+    else if (normStage === 'New') finalDays = 0;
+    return {
+      ...lead,
+      Stage: normStage,
+      id: lead.id || generateId(lead.Name),
+      Beta: toBool(lead.Beta) ? 'true' : 'false',
+      Trial: toBool(lead.Trial) ? 'true' : 'false',
+      calculatedDays: finalDays,
+    };
+  };
+
+  const ensureUniqueLeadIds = (leadRows) => {
+    const seen = new Set();
+    return leadRows.map((lead) => {
+      let nextId = String(lead.id || '').trim() || generateId(lead.Name);
+      while (seen.has(nextId)) nextId = generateId(lead.Name);
+      seen.add(nextId);
+      return { ...lead, id: nextId };
+    });
+  };
+
+  const sanitizeLeadForStorage = (lead) => {
+    const clean = {};
+    LEAD_CSV_COLUMNS.forEach((key) => {
+      const raw = lead?.[key];
+      if (key === 'id') {
+        clean.id = String(raw || '').trim() || generateId(lead?.Name);
+        return;
+      }
+      if (key === 'Stage') {
+        clean.Stage = normalizeStage(raw) || 'New';
+        return;
+      }
+      if (key === 'Beta' || key === 'Trial') {
+        clean[key] = toBool(raw) ? 'true' : 'false';
+        return;
+      }
+      if (key === 'History') {
+        clean.History = Array.isArray(raw) ? JSON.stringify(raw) : String(raw || '');
+        return;
+      }
+      clean[key] = raw == null ? '' : String(raw);
+    });
+    return clean;
+  };
+
+  const sanitizeCompaniesForStorage = (companyMap) => {
+    const next = {};
+    Object.entries(companyMap || {}).forEach(([name, company]) => {
+      const companyName = String(company?.Company || name || '').trim();
+      if (!companyName) return;
+      const clean = {};
+      Object.keys(COMPANY_FIELDS).forEach((key) => {
+        if (key === 'Company') {
+          clean.Company = companyName;
+          return;
+        }
+        if (key === 'Employees') {
+          const digits = String(company?.Employees || '').replace(/[^0-9]/g, '');
+          clean.Employees = digits ? Number(digits) : '';
+          return;
+        }
+        clean[key] = company?.[key] == null ? '' : String(company[key]);
+      });
+      next[companyName] = clean;
+    });
+    return next;
+  };
+
+  const saveLeadsToGithub = (newLeads) => {
+    const prepared = ensureUniqueLeadIds(newLeads.map(sanitizeLeadForStorage));
+    const hydrated = prepared.map(hydrateLeadForState);
+    setLeads(hydrated);
+    return saveCSV(keys.github, REPO_OWNER, REPO_NAME, LEADS_PATH, prepared, sha.leads)
+      .then(r => setSha(p => ({ ...p, leads: r.content.sha })))
+      .catch(() => alert("Save failed"));
+  };
+  const saveCompaniesToGithub = (newComp) => {
+    const prepared = sanitizeCompaniesForStorage(newComp);
+    setCompanies(prepared);
+    return saveCSV(keys.github, REPO_OWNER, REPO_NAME, COMPANIES_PATH, Object.values(prepared), sha.companies)
+      .then(r => setSha(p => ({ ...p, companies: r.content.sha })));
+  };
 
   // --- HELPER: CHECK DEAD END ---
   const checkForDeadEnd = (currentLeads, companyName) => {
@@ -575,7 +662,7 @@ export default function App() {
             </div>
 
             {/* PIPELINE FILTERS */}
-            {viewMode === 'pipeline' && (
+            {(viewMode === 'pipeline' || viewMode === 'table') && (
               <>
                 <div className="flex items-center gap-2 border-l border-slate-200 pl-6">
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:border-slate-300">
@@ -646,8 +733,8 @@ export default function App() {
             <LeadsTableView
               leads={leads}
               companies={companies}
-              owners={uniqueOwners}
               searchQuery={searchQuery}
+              ownerFilter={ownerFilter}
               onSaveAll={handleTableSaveAll}
               onToast={notifyToast}
             />
